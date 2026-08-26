@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#150f0d"/>
+  <!-- Dial with a marked upper range, echoing the app's buzz meter. -->
+  <path d="M12 42 A20 20 0 0 1 52 42" fill="none" stroke="#b79e8e" stroke-width="3"/>
+  <path d="M43.5 27 A20 20 0 0 1 52 42" fill="none" stroke="#f0a857" stroke-width="3"/>
+  <line x1="32" y1="42" x2="44" y2="31" stroke="#f0a857" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="32" cy="42" r="3.5" fill="#f5ede4"/>
+</svg>

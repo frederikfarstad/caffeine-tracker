@@ -1,0 +1,219 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { createTestDb, type TestDb } from '@/db/test-db'
+import { joinAttempts, members, users } from '@/db/schema'
+import { eq } from 'drizzle-orm'
+import {
+  JOIN_ATTEMPT_LIMIT,
+  JOIN_ATTEMPT_WINDOW_MS,
+  codesMatch,
+  isAdminEmail,
+  joinTeam,
+} from './membership'
+
+describe('codesMatch', () => {
+  it('accepts the exact code', () => {
+    expect(codesMatch('espresso-yourself', 'espresso-yourself')).toBe(true)
+  })
+
+  it('ignores surrounding whitespace, which pasting tends to add', () => {
+    expect(codesMatch('  espresso-yourself \n', 'espresso-yourself')).toBe(true)
+  })
+
+  it('is case sensitive', () => {
+    expect(codesMatch('Espresso-Yourself', 'espresso-yourself')).toBe(false)
+  })
+
+  it('rejects a wrong code', () => {
+    expect(codesMatch('latte-yourself', 'espresso-yourself')).toBe(false)
+  })
+
+  it('rejects a code that is merely a prefix', () => {
+    expect(codesMatch('espresso', 'espresso-yourself')).toBe(false)
+  })
+
+  it('rejects empty input', () => {
+    expect(codesMatch('', 'espresso-yourself')).toBe(false)
+    expect(codesMatch('   ', 'espresso-yourself')).toBe(false)
+  })
+
+  // A misconfigured deployment must fail closed rather than admit everyone.
+  it('rejects everything when no code is configured', () => {
+    expect(codesMatch('anything', undefined)).toBe(false)
+    expect(codesMatch('', undefined)).toBe(false)
+    expect(codesMatch('anything', '')).toBe(false)
+  })
+})
+
+describe('isAdminEmail', () => {
+  it('matches an email in the list', () => {
+    expect(isAdminEmail('ada@example.com', 'ada@example.com,linn@example.com')).toBe(true)
+  })
+
+  it('ignores whitespace and case in the list', () => {
+    expect(isAdminEmail('ada@example.com', ' Ada@Example.com , linn@example.com ')).toBe(true)
+  })
+
+  it('rejects an email not in the list', () => {
+    expect(isAdminEmail('mallory@example.com', 'ada@example.com')).toBe(false)
+  })
+
+  it('grants nobody when the list is unset or empty', () => {
+    expect(isAdminEmail('ada@example.com', undefined)).toBe(false)
+    expect(isAdminEmail('ada@example.com', '')).toBe(false)
+    expect(isAdminEmail('ada@example.com', '  ,  ')).toBe(false)
+  })
+
+  it('never treats a null email as an admin', () => {
+    expect(isAdminEmail(null, 'ada@example.com')).toBe(false)
+  })
+})
+
+describe('joinTeam', () => {
+  const CODE = 'espresso-yourself'
+  const now = new Date('2026-08-26T10:00:00Z')
+  let db: TestDb
+
+  beforeEach(async () => {
+    db = await createTestDb()
+    await db.insert(users).values({ id: 'u1', name: 'Ada', email: 'ada@example.com' })
+  })
+
+  it('creates a membership for the correct code', async () => {
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: CODE,
+      expectedCode: CODE,
+      now,
+    })
+
+    expect(result).toEqual({ ok: true })
+    const [member] = await db.select().from(members).where(eq(members.userId, 'u1'))
+    expect(member).toMatchObject({ userId: 'u1', displayName: 'Ada', isAdmin: false })
+  })
+
+  it('falls back to the email local part when the account has no name', async () => {
+    await db.insert(users).values({ id: 'u2', name: null, email: 'linn@example.com' })
+    await joinTeam(db, { userId: 'u2', submittedCode: CODE, expectedCode: CODE, now })
+
+    const [member] = await db.select().from(members).where(eq(members.userId, 'u2'))
+    expect(member.displayName).toBe('linn')
+  })
+
+  it('grants admin to a configured email', async () => {
+    await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: CODE,
+      expectedCode: CODE,
+      adminEmails: 'ada@example.com',
+      now,
+    })
+
+    const [member] = await db.select().from(members).where(eq(members.userId, 'u1'))
+    expect(member.isAdmin).toBe(true)
+  })
+
+  it('rejects a wrong code without creating a membership', async () => {
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: 'nope',
+      expectedCode: CODE,
+      now,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(await db.select().from(members)).toEqual([])
+  })
+
+  it('reports the attempts remaining after a failure', async () => {
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: 'nope',
+      expectedCode: CODE,
+      now,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'wrong-code',
+      attemptsRemaining: JOIN_ATTEMPT_LIMIT - 1,
+    })
+  })
+
+  it('locks out after the attempt limit', async () => {
+    for (let i = 0; i < JOIN_ATTEMPT_LIMIT; i++) {
+      await joinTeam(db, { userId: 'u1', submittedCode: 'nope', expectedCode: CODE, now })
+    }
+
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: 'nope',
+      expectedCode: CODE,
+      now,
+    })
+    expect(result).toMatchObject({ ok: false, reason: 'locked-out' })
+  })
+
+  // Otherwise brute force is only slowed down, not stopped.
+  it('refuses even the correct code while locked out', async () => {
+    for (let i = 0; i < JOIN_ATTEMPT_LIMIT; i++) {
+      await joinTeam(db, { userId: 'u1', submittedCode: 'nope', expectedCode: CODE, now })
+    }
+
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: CODE,
+      expectedCode: CODE,
+      now,
+    })
+    expect(result).toMatchObject({ ok: false, reason: 'locked-out' })
+    expect(await db.select().from(members)).toEqual([])
+  })
+
+  it('allows attempts again once the window has passed', async () => {
+    for (let i = 0; i < JOIN_ATTEMPT_LIMIT; i++) {
+      await joinTeam(db, { userId: 'u1', submittedCode: 'nope', expectedCode: CODE, now })
+    }
+
+    const later = new Date(now.getTime() + JOIN_ATTEMPT_WINDOW_MS + 1)
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: CODE,
+      expectedCode: CODE,
+      now: later,
+    })
+
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('clears the attempt record on success', async () => {
+    await joinTeam(db, { userId: 'u1', submittedCode: 'nope', expectedCode: CODE, now })
+    await joinTeam(db, { userId: 'u1', submittedCode: CODE, expectedCode: CODE, now })
+
+    expect(await db.select().from(joinAttempts)).toEqual([])
+  })
+
+  it('is idempotent when someone is already a member', async () => {
+    await joinTeam(db, { userId: 'u1', submittedCode: CODE, expectedCode: CODE, now })
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: CODE,
+      expectedCode: CODE,
+      now,
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(await db.select().from(members)).toHaveLength(1)
+  })
+
+  it('fails closed when no code is configured', async () => {
+    const result = await joinTeam(db, {
+      userId: 'u1',
+      submittedCode: 'anything',
+      expectedCode: undefined,
+      now,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(await db.select().from(members)).toEqual([])
+  })
+})

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787735079130,
+      "tag": "0000_amused_liz_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787735209220,
+      "tag": "0001_friendly_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787735651925,
+      "tag": "0002_add_category_mg",
+      "breakpoints": true
+    }
+  ]
+}
