@@ -7,6 +7,22 @@ import { DAILY_MAX_MG, formatMg, limitHeadline, limitStatus } from '@/lib/caffei
 import type { ActiveDrinkType } from '@/server/drinks'
 import type { UndoableDrink } from '@/server/drinks'
 
+/**
+ * The current Oslo wall clock as `HH:MM`, for prefilling the time input.
+ *
+ * Formatted in the app's timezone rather than the browser's, so someone opening
+ * the app from a conference abroad still sees — and logs against — the clock the
+ * rest of the numbers are bucketed by.
+ */
+function osloClockNow(): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Oslo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date())
+}
+
 const HEADLINE_TONE = {
   ok: 'text-oat',
   approaching: 'text-crema',
@@ -34,6 +50,9 @@ export function LogDrinkPanel({
   )
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  // `null` is the normal case: the buttons log the moment they are tapped. A
+  // string means the next tap is backdated to that time today.
+  const [earlierTime, setEarlierTime] = useState<string | null>(null)
 
   function run(delta: number, action: () => Promise<{ ok: boolean; message: string | null }>) {
     startTransition(async () => {
@@ -79,13 +98,25 @@ export function LogDrinkPanel({
       </div>
 
       <div className="border-t border-hairline bg-roast/40 p-4">
+        {/*
+         * With a time set, the buttons no longer mean "now" — so they say so
+         * above the grid, where the tap is about to happen, rather than only in
+         * the control that changed it.
+         */}
+        {earlierTime !== null && (
+          <p className="legend pb-2 text-crema" aria-live="polite">
+            Logging at {earlierTime}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {drinkTypes.map((type) => (
             <button
               key={type.slug}
               type="button"
               disabled={pending}
-              onClick={() => run(type.caffeineMg, () => logDrinkAction(type.slug))}
+              onClick={() =>
+                run(type.caffeineMg, () => logDrinkAction(type.slug, earlierTime ?? undefined))
+              }
               className={`keycap flex min-h-13 flex-1 basis-[calc(50%-0.25rem)] items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-left disabled:opacity-60 sm:basis-auto ${
                 type.category === 'energy'
                   ? 'border-zap-dim bg-zap/10 hover:border-zap hover:bg-zap/15'
@@ -99,6 +130,42 @@ export function LogDrinkPanel({
             </button>
           ))}
         </div>
+
+        {earlierTime === null ? (
+          <button
+            type="button"
+            onClick={() => setEarlierTime(osloClockNow())}
+            className="mt-3 font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+          >
+            Log an earlier time
+          </button>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label
+              htmlFor="earlier-time"
+              className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase"
+            >
+              Drunk at
+            </label>
+            <input
+              id="earlier-time"
+              type="time"
+              value={earlierTime}
+              // Times later today are refused by the server anyway; `max` lets
+              // the browser say so before a round trip.
+              max={osloClockNow()}
+              onChange={(event) => setEarlierTime(event.target.value)}
+              className="font-gauge rounded-lg border border-hairline bg-roast px-2.5 py-1.5 text-sm text-foam"
+            />
+            <button
+              type="button"
+              onClick={() => setEarlierTime(null)}
+              className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+            >
+              Back to now
+            </button>
+          </div>
+        )}
 
         <div className="mt-3 flex min-h-6 items-center justify-between gap-3">
           <p aria-live="polite" className="text-xs text-scald">

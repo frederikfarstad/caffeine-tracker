@@ -10,6 +10,7 @@ import {
   getTeamSplit,
   getTeamTimeSeries,
   getUserStreak,
+  getUserIntakeEvents,
   getUserSummary,
   getUserTimeSeries,
 } from './stats'
@@ -294,6 +295,70 @@ describe('getTeamSplit', () => {
       { category: 'coffee', mg: 0, count: 0 },
       { category: 'energy', mg: 0, count: 0 },
       { category: 'other', mg: 0, count: 0 },
+    ])
+  })
+})
+
+describe('getUserIntakeEvents', () => {
+  // 12 hours back from 15:00 Oslo is 03:00 the same morning.
+  const twelveHoursBack = new Date(NOW.getTime() - 12 * 60 * 60 * 1000)
+
+  it('returns the caller’s drinks inside the window, oldest first', async () => {
+    const events = await getUserIntakeEvents(db, 'ada', { from: twelveHoursBack })
+
+    expect(events).toEqual([
+      { consumedAt: oslo('2026-08-26', 10), caffeineMg: 95 },
+      { consumedAt: oslo('2026-08-26', 14), caffeineMg: 160 },
+    ])
+  })
+
+  it('excludes drinks older than the window', async () => {
+    const events = await getUserIntakeEvents(db, 'ada', { from: twelveHoursBack })
+    expect(events.map((event) => event.consumedAt)).not.toContain(oslo('2026-08-25', 9))
+  })
+
+  it('never returns another member’s drinks', async () => {
+    const events = await getUserIntakeEvents(db, 'linn', { from: twelveHoursBack })
+    expect(events).toEqual([{ consumedAt: oslo('2026-08-26', 9), caffeineMg: 63 }])
+  })
+
+  it('is empty for a member who has never logged anything', async () => {
+    expect(await getUserIntakeEvents(db, 'bo', { from: twelveHoursBack })).toEqual([])
+  })
+
+  // The window is a rolling 12 hours, so before noon it reaches back into
+  // yesterday — across the local_date the query is indexed by.
+  it('reaches back across the local date boundary', async () => {
+    // 08:00 Oslo on the 26th; the window opens at 20:00 on the 25th.
+    const morning = oslo('2026-08-26', 8)
+    await logDrink(db, { userId: 'ada', slug: 'espresso', now: oslo('2026-08-25', 22) })
+
+    const events = await getUserIntakeEvents(db, 'ada', {
+      from: new Date(morning.getTime() - 12 * 60 * 60 * 1000),
+    })
+
+    expect(events).toEqual([
+      { consumedAt: oslo('2026-08-25', 22), caffeineMg: 63 },
+      { consumedAt: oslo('2026-08-26', 10), caffeineMg: 95 },
+      { consumedAt: oslo('2026-08-26', 14), caffeineMg: 160 },
+    ])
+  })
+
+  // Backdating writes a row whose consumed_at is older than its created_at;
+  // the curve has to place it where it was drunk.
+  it('orders by when the drink was drunk, not when it was logged', async () => {
+    await logDrink(db, {
+      userId: 'bo',
+      slug: 'coffee',
+      now: oslo('2026-08-26', 14),
+      consumedAt: oslo('2026-08-26', 7),
+    })
+    await logDrink(db, { userId: 'bo', slug: 'espresso', now: oslo('2026-08-26', 13) })
+
+    const events = await getUserIntakeEvents(db, 'bo', { from: twelveHoursBack })
+    expect(events.map((event) => event.consumedAt)).toEqual([
+      oslo('2026-08-26', 7),
+      oslo('2026-08-26', 13),
     ])
   })
 })

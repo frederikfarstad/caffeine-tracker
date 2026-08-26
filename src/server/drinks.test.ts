@@ -9,6 +9,7 @@ import {
   getUndoableDrink,
   listActiveDrinkTypes,
   logDrink,
+  resolveConsumedAt,
   undoLastDrink,
 } from './drinks'
 
@@ -154,6 +155,78 @@ describe('logDrink', () => {
   })
 })
 
+describe('logDrink, backdated', () => {
+  it('files the drink under the hour it was drunk, not the hour it was logged', async () => {
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'coffee',
+      now,
+      consumedAt: new Date('2026-08-26T05:00:00Z'), // 07:00 Oslo
+    })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log.localHour).toBe(7)
+    expect(log.consumedAt).toEqual(new Date('2026-08-26T05:00:00Z'))
+  })
+
+  it('records when the row was written separately from when the drink happened', async () => {
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'coffee',
+      now,
+      consumedAt: new Date('2026-08-26T05:00:00Z'),
+    })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log.createdAt).toEqual(now)
+  })
+
+  it('defaults the drink time to now', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log.consumedAt).toEqual(now)
+    expect(log.createdAt).toEqual(now)
+  })
+
+  // The rollup has to follow the drink, not the write, or a drink backdated
+  // across midnight lands its milligrams on the wrong day.
+  it('credits the rollup to the local date the drink happened on', async () => {
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'coffee',
+      now,
+      consumedAt: new Date('2026-08-25T20:00:00Z'), // 22:00 Oslo, the day before
+    })
+
+    expect(await totalsFor('ada', '2026-08-25')).toMatchObject({ totalMg: 95 })
+    expect(await totalsFor('ada', '2026-08-26')).toBeUndefined()
+  })
+
+  it('leaves the rollup consistent after a backdated log', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'espresso',
+      now,
+      consumedAt: new Date('2026-08-25T20:00:00Z'),
+    })
+
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('reports the local date the drink was credited to', async () => {
+    const result = await logDrink(db, {
+      userId: 'ada',
+      slug: 'coffee',
+      now,
+      consumedAt: new Date('2026-08-25T20:00:00Z'),
+    })
+
+    expect(result).toMatchObject({ ok: true, localDate: '2026-08-25' })
+  })
+})
+
 describe('undoLastDrink', () => {
   it('removes the most recent drink', async () => {
     await logDrink(db, { userId: 'ada', slug: 'coffee', now })
@@ -244,6 +317,37 @@ describe('undoLastDrink', () => {
 
     expect(await findRollupDrift(db)).toEqual([])
   })
+
+  // The undo window measures from the write, not from the drink: a coffee
+  // logged for 07:00 at 10:00 has to stay undoable for the usual ten minutes.
+  it('still allows undoing a drink backdated beyond the window', async () => {
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'coffee',
+      now,
+      consumedAt: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+    })
+
+    const result = await undoLastDrink(db, { userId: 'ada', now })
+    expect(result.ok).toBe(true)
+    expect(await db.select().from(drinkLogs)).toEqual([])
+  })
+
+  it('takes back the most recently written drink, not the latest-dated one', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'espresso',
+      now: new Date(now.getTime() + 60_000),
+      consumedAt: new Date(now.getTime() - 60 * 60 * 1000),
+    })
+
+    await undoLastDrink(db, { userId: 'ada', now: new Date(now.getTime() + 120_000) })
+
+    const logs = await db.select().from(drinkLogs)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].caffeineMg).toBe(95)
+  })
 })
 
 describe('getUndoableDrink', () => {
@@ -265,8 +369,85 @@ describe('getUndoableDrink', () => {
     expect(await getUndoableDrink(db, { userId: 'ada', now: later })).toBeNull()
   })
 
+  it('offers a backdated drink for the usual window after writing it', async () => {
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'coffee',
+      now,
+      consumedAt: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+    })
+
+    expect(await getUndoableDrink(db, { userId: 'ada', now })).toMatchObject({
+      caffeineMg: 95,
+      name: 'Coffee',
+    })
+  })
+
   it('never reports another user’s drink', async () => {
     await logDrink(db, { userId: 'linn', slug: 'coffee', now })
     expect(await getUndoableDrink(db, { userId: 'ada', now })).toBeNull()
+  })
+})
+
+describe('resolveConsumedAt', () => {
+  it('falls back to now when no time is given', () => {
+    expect(resolveConsumedAt({ time: undefined, now })).toEqual({ ok: true, consumedAt: now })
+  })
+
+  it('treats an empty string as no time given', () => {
+    expect(resolveConsumedAt({ time: '', now })).toEqual({ ok: true, consumedAt: now })
+  })
+
+  it('resolves a wall-clock time earlier today in Oslo', () => {
+    // 07:15 Oslo on a summer morning is 05:15 UTC.
+    expect(resolveConsumedAt({ time: '07:15', now })).toEqual({
+      ok: true,
+      consumedAt: new Date('2026-08-26T05:15:00Z'),
+    })
+  })
+
+  it('accepts the current minute', () => {
+    // `now` is 10:00 Oslo.
+    expect(resolveConsumedAt({ time: '10:00', now })).toMatchObject({ ok: true })
+  })
+
+  // The form submits whole minutes and the two clocks are never exactly in
+  // step, so "the minute we are in" has to count as now rather than as future.
+  it('accepts the minute in progress when the server clock has run ahead', () => {
+    const fortySecondsPast = new Date('2026-08-26T08:00:40Z')
+    expect(resolveConsumedAt({ time: '10:01', now: fortySecondsPast })).toMatchObject({
+      ok: true,
+    })
+  })
+
+  it('rejects a time more than a minute ahead of the server clock', () => {
+    const fortySecondsPast = new Date('2026-08-26T08:00:40Z')
+    expect(resolveConsumedAt({ time: '10:02', now: fortySecondsPast })).toEqual({
+      ok: false,
+      reason: 'future-time',
+    })
+  })
+
+  // Someone could otherwise pre-log tonight's espresso and skew the day.
+  it('rejects a time later today', () => {
+    expect(resolveConsumedAt({ time: '23:00', now })).toEqual({
+      ok: false,
+      reason: 'future-time',
+    })
+  })
+
+  it('rejects a malformed time', () => {
+    for (const time of ['nope', '7:15', '25:00', '10:60', '10', '10:1']) {
+      expect(resolveConsumedAt({ time, now })).toEqual({ ok: false, reason: 'malformed-time' })
+    }
+  })
+
+  it('anchors to the local date, so a drink just after midnight stays today', () => {
+    // 00:30 Oslo on the 27th, i.e. 22:30 UTC on the 26th.
+    const justAfterMidnight = new Date('2026-08-26T22:30:00Z')
+    expect(resolveConsumedAt({ time: '00:10', now: justAfterMidnight })).toEqual({
+      ok: true,
+      consumedAt: new Date('2026-08-26T22:10:00Z'),
+    })
   })
 })

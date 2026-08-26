@@ -12,6 +12,7 @@ async function seedLog(overrides: Partial<typeof drinkLogs.$inferInsert> = {}) {
     caffeineMg: 95,
     category: 'coffee',
     consumedAt: new Date('2026-08-26T08:00:00Z'),
+    createdAt: new Date('2026-08-26T08:00:00Z'),
     localDate: '2026-08-26',
     localHour: 10,
     ...overrides,

@@ -3,11 +3,11 @@ import type { Db } from '@/db'
 import { dailyTotals, drinkLogs, drinkTypes } from '@/db/schema'
 import type { TestDb } from '@/db/test-db'
 import type { DrinkCategory } from '@/lib/caffeine'
-import { localBuckets } from '@/lib/time'
+import { instantFromLocalTime, localBuckets, localDateOf } from '@/lib/time'
 
 type AnyDb = Db | TestDb
 
-/** How long after logging a drink it can still be taken back. */
+/** How long after *writing* a drink log it can still be taken back. */
 export const UNDO_WINDOW_MS = 10 * 60 * 1000
 
 export type ActiveDrinkType = {
@@ -34,6 +34,44 @@ export async function listActiveDrinkTypes(db: AnyDb): Promise<ActiveDrinkType[]
     .orderBy(asc(drinkTypes.sortOrder), asc(drinkTypes.id))
 }
 
+/** `HH:MM` on a 24-hour clock, which is what `input[type=time]` submits. */
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+
+export type ResolvedConsumedAt =
+  | { ok: true; consumedAt: Date }
+  | { ok: false; reason: 'malformed-time' | 'future-time' }
+
+/**
+ * Turn the optional time from the log form into the instant to record.
+ *
+ * Anchored to today's Oslo date, so the picker only ever reaches back into the
+ * current day — the case it exists for ("I forgot to log this morning's
+ * coffee"). Backdating further would need a date as well as a time, and a
+ * second field for a rarer case is not worth the surface.
+ *
+ * Future times are refused rather than clamped: silently moving someone's 23:00
+ * to 10:00 would be a worse answer than saying no.
+ */
+export function resolveConsumedAt({
+  time,
+  now = new Date(),
+}: {
+  time: string | undefined
+  now?: Date
+}): ResolvedConsumedAt {
+  if (!time) return { ok: true, consumedAt: now }
+  if (!TIME_PATTERN.test(time)) return { ok: false, reason: 'malformed-time' }
+
+  const consumedAt = instantFromLocalTime(localDateOf(now), time)
+  // Compared to the minute, since the picker has no seconds: choosing the
+  // current minute must not be a future time just because 40 seconds have run.
+  if (consumedAt.getTime() - now.getTime() > 60_000) {
+    return { ok: false, reason: 'future-time' }
+  }
+
+  return { ok: true, consumedAt }
+}
+
 export type LogDrinkResult =
   | { ok: true; logId: number; caffeineMg: number; localDate: string }
   | { ok: false; reason: 'unknown-drink' }
@@ -44,10 +82,21 @@ export type LogDrinkResult =
  * Two things happen in a single transaction: the log row is written, and the
  * per-day rollup is incremented. They must not drift apart, so they must not
  * be able to half-succeed.
+ *
+ * `consumedAt` is when the drink was drunk and `now` is when it was logged.
+ * They are the same instant for a tap on a drink button, and differ when
+ * someone catches up on a coffee they had at breakfast. Every calendar
+ * consequence — the local date and hour, the rollup day — follows the drink;
+ * only the undo window follows the write.
  */
 export async function logDrink(
   db: AnyDb,
-  { userId, slug, now = new Date() }: { userId: string; slug: string; now?: Date },
+  {
+    userId,
+    slug,
+    now = new Date(),
+    consumedAt = now,
+  }: { userId: string; slug: string; now?: Date; consumedAt?: Date },
 ): Promise<LogDrinkResult> {
   const [type] = await db
     .select()
@@ -56,7 +105,7 @@ export async function logDrink(
 
   if (!type) return { ok: false, reason: 'unknown-drink' }
 
-  const { localDate, localHour } = localBuckets(now)
+  const { localDate, localHour } = localBuckets(consumedAt)
   const delta = categoryDelta(type.category)
 
   const logId = await db.transaction(async (tx) => {
@@ -69,7 +118,8 @@ export async function logDrink(
         // what this day already cost.
         caffeineMg: type.caffeineMg,
         category: type.category,
-        consumedAt: now,
+        consumedAt,
+        createdAt: now,
         localDate,
         localHour,
       })
@@ -112,7 +162,11 @@ export type UndoResult =
   | { ok: false; reason: 'nothing-to-undo' | 'too-old' }
 
 /**
- * Take back your most recent drink, within {@link UNDO_WINDOW_MS}.
+ * Take back the drink you most recently logged, within {@link UNDO_WINDOW_MS}.
+ *
+ * Ordered and timed by `createdAt`, not `consumedAt`: "undo" means "take back
+ * what I just did", and a drink logged for earlier in the day is still the last
+ * thing you did.
  *
  * A hard delete rather than a soft one: a `deleted_at` column would add a
  * filter to every aggregate query in `stats.ts` in order to support one rare
@@ -127,11 +181,11 @@ export async function undoLastDrink(
     .select()
     .from(drinkLogs)
     .where(eq(drinkLogs.userId, userId))
-    .orderBy(desc(drinkLogs.consumedAt), desc(drinkLogs.id))
+    .orderBy(desc(drinkLogs.createdAt), desc(drinkLogs.id))
     .limit(1)
 
   if (!last) return { ok: false, reason: 'nothing-to-undo' }
-  if (now.getTime() - last.consumedAt.getTime() > UNDO_WINDOW_MS) {
+  if (now.getTime() - last.createdAt.getTime() > UNDO_WINDOW_MS) {
     return { ok: false, reason: 'too-old' }
   }
 
@@ -201,18 +255,18 @@ export async function getUndoableDrink(
   const [last] = await db
     .select({
       caffeineMg: drinkLogs.caffeineMg,
-      consumedAt: drinkLogs.consumedAt,
+      createdAt: drinkLogs.createdAt,
       name: drinkTypes.name,
     })
     .from(drinkLogs)
     .innerJoin(drinkTypes, eq(drinkTypes.id, drinkLogs.drinkTypeId))
     .where(eq(drinkLogs.userId, userId))
-    .orderBy(desc(drinkLogs.consumedAt), desc(drinkLogs.id))
+    .orderBy(desc(drinkLogs.createdAt), desc(drinkLogs.id))
     .limit(1)
 
   if (!last) return null
 
-  const expiresAt = new Date(last.consumedAt.getTime() + UNDO_WINDOW_MS)
+  const expiresAt = new Date(last.createdAt.getTime() + UNDO_WINDOW_MS)
   if (expiresAt.getTime() <= now.getTime()) return null
 
   return { caffeineMg: last.caffeineMg, name: last.name, expiresAt }

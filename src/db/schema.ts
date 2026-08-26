@@ -120,14 +120,23 @@ export const drinkLogs = sqliteTable(
     caffeineMg: integer('caffeine_mg').notNull(),
     category: text('category').$type<DrinkCategory>().notNull(),
     consumedAt: integer('consumed_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * When the row was written, which is not when the drink was drunk: a drink
+     * can be logged for a time earlier in the day.
+     *
+     * The undo window measures from here. Keyed off `consumedAt` instead, a
+     * coffee backdated to breakfast would arrive already too old to take back.
+     */
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     localDate: text('local_date').notNull(),
     localHour: integer('local_hour').notNull(),
   },
   (table) => [
     index('drink_logs_user_date_idx').on(table.userId, table.localDate),
     index('drink_logs_date_idx').on(table.localDate),
-    // Supports the "undo my most recent drink" lookup.
-    index('drink_logs_user_recent_idx').on(table.userId, table.consumedAt),
+    // Supports the "undo my most recent drink" lookup, which orders by write
+    // time so that backdating cannot hide the row you just added.
+    index('drink_logs_user_recent_idx').on(table.userId, table.createdAt),
   ],
 )
 

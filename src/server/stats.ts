@@ -70,6 +70,12 @@ export type HourBar = {
   mg: number
 }
 
+/** One drink, as the caffeine curve needs it: how much, and when. */
+export type IntakeEvent = {
+  consumedAt: Date
+  caffeineMg: number
+}
+
 /* -------------------------------------------------------------------------- */
 /* Shared helpers                                                            */
 /* -------------------------------------------------------------------------- */
@@ -225,6 +231,42 @@ export async function getUserTimeSeries(
  * Today not having a drink yet does not break a streak — the day isn't over —
  * so a streak may end on yesterday. Two days without a drink ends it.
  */
+/**
+ * One member's individual drinks since an instant, for the caffeine curve.
+ *
+ * The one place a chart reads `drink_logs` rather than the rollup, because a
+ * decay curve needs the drinks themselves: a daily total cannot say whether
+ * 300mg arrived at 08:00 or at 20:00, which is the only thing the curve is
+ * about.
+ *
+ * Cheap despite that. The `local_date` predicate is what the
+ * `(user_id, local_date)` index answers, so the scan covers two days of one
+ * person's drinks rather than the table; `consumed_at` then trims the window to
+ * the exact hour. Filtering on `consumed_at` alone would read every drink the
+ * member has ever logged.
+ */
+export async function getUserIntakeEvents(
+  db: AnyDb,
+  userId: string,
+  { from, now = new Date() }: { from: Date; now?: Date },
+): Promise<IntakeEvent[]> {
+  return db
+    .select({
+      consumedAt: drinkLogs.consumedAt,
+      caffeineMg: drinkLogs.caffeineMg,
+    })
+    .from(drinkLogs)
+    .where(
+      and(
+        eq(drinkLogs.userId, userId),
+        gte(drinkLogs.localDate, localDateOf(from)),
+        lte(drinkLogs.localDate, localDateOf(now)),
+        gte(drinkLogs.consumedAt, from),
+      ),
+    )
+    .orderBy(asc(drinkLogs.consumedAt))
+}
+
 export async function getUserStreak(db: AnyDb, userId: string, now = new Date()): Promise<number> {
   const rows = await db
     .select({ localDate: dailyTotals.localDate })

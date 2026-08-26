@@ -54,6 +54,69 @@ export function localBuckets(instant: Date): LocalBuckets {
   }
 }
 
+/**
+ * The same parts as {@link partsFormatter}, to the minute.
+ *
+ * Only {@link osloOffsetMs} needs this resolution, and reusing one formatter
+ * for both would make every `localBuckets` call format two fields it discards.
+ */
+const offsetFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: APP_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** Oslo's offset from UTC at a given instant, in milliseconds. */
+function osloOffsetMs(instant: Date): number {
+  const parts = offsetFormatter.formatToParts(instant)
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value)
+
+  // Reading the local parts back as though they were UTC turns the difference
+  // from the real instant into the offset.
+  const asIfUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+  )
+
+  return asIfUtc - Math.floor(instant.getTime() / 60_000) * 60_000
+}
+
+/**
+ * The inverse of {@link localBuckets}: the instant at which Oslo's wall clock
+ * reads a given date and `HH:MM`.
+ *
+ * Needed because a drink can be logged for a time earlier in the day, and
+ * `new Date('2026-08-26T09:15')` would resolve against the *server's* timezone
+ * — UTC in production, whatever the laptop says locally.
+ *
+ * Two correction passes rather than one: the first guess can land on the wrong
+ * side of a daylight saving transition, in which case it was corrected by the
+ * wrong offset. Re-deriving the offset from the corrected instant fixes it.
+ *
+ * Total by construction, so a picker cannot produce an invalid Date. The two
+ * awkward cases resolve deliberately: a local time inside the spring gap comes
+ * back an hour later, and an ambiguous autumn time comes back as the later of
+ * its two passes.
+ */
+export function instantFromLocalTime(date: LocalDate, time: string): Date {
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  const asIfUtc = Date.UTC(year, month - 1, day, hour, minute)
+
+  let instant = asIfUtc - osloOffsetMs(new Date(asIfUtc))
+  instant = asIfUtc - osloOffsetMs(new Date(instant))
+
+  return new Date(instant)
+}
+
 /** The calendar date an instant falls on in Oslo. */
 export function localDateOf(instant: Date): LocalDate {
   return localBuckets(instant).localDate

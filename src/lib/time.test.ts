@@ -4,6 +4,7 @@ import {
   addLocalDays,
   bucketFor,
   enumerateLocalDates,
+  instantFromLocalTime,
   localBuckets,
   localDateOf,
   periodToDateRange,
@@ -252,5 +253,69 @@ describe('bucketFor', () => {
     expect(bucketFor('week')).toBe('day')
     expect(bucketFor('month')).toBe('day')
     expect(bucketFor('all')).toBe('day')
+  })
+})
+
+describe('instantFromLocalTime', () => {
+  it('resolves a winter wall-clock time at UTC+1', () => {
+    expect(instantFromLocalTime('2026-01-15', '08:30')).toEqual(
+      new Date('2026-01-15T07:30:00Z'),
+    )
+  })
+
+  it('resolves a summer wall-clock time at UTC+2', () => {
+    expect(instantFromLocalTime('2026-08-26', '08:30')).toEqual(
+      new Date('2026-08-26T06:30:00Z'),
+    )
+  })
+
+  // Local midnight is the previous UTC day, which is exactly the case a naive
+  // `new Date('2026-08-26T00:00')` gets wrong on a server running in UTC.
+  it('puts local midnight on the previous UTC day in summer', () => {
+    expect(instantFromLocalTime('2026-08-26', '00:00')).toEqual(
+      new Date('2026-08-25T22:00:00Z'),
+    )
+  })
+
+  it('round-trips through localBuckets', () => {
+    const instant = instantFromLocalTime('2026-08-26', '14:45')
+    expect(localBuckets(instant)).toEqual({ localDate: '2026-08-26', localHour: 14 })
+  })
+
+  describe('spring-forward transition (2026-03-29)', () => {
+    it('resolves the hour before the change as CET', () => {
+      expect(instantFromLocalTime('2026-03-29', '01:30')).toEqual(
+        new Date('2026-03-29T00:30:00Z'),
+      )
+    })
+
+    it('resolves the hour after the change as CEST', () => {
+      expect(instantFromLocalTime('2026-03-29', '03:30')).toEqual(
+        new Date('2026-03-29T01:30:00Z'),
+      )
+    })
+
+    // 02:30 never happens that day. Landing on 03:30 keeps the function total,
+    // so a picker offering every hour cannot produce an invalid Date.
+    it('shifts a local time that does not exist forward past the gap', () => {
+      const instant = instantFromLocalTime('2026-03-29', '02:30')
+      expect(localBuckets(instant)).toEqual({ localDate: '2026-03-29', localHour: 3 })
+    })
+  })
+
+  describe('fall-back transition (2026-10-25)', () => {
+    // 02:30 happens twice. Either is defensible; the later pass is pinned so
+    // the choice is a decision rather than an accident.
+    it('resolves an ambiguous local time to the later, CET pass', () => {
+      expect(instantFromLocalTime('2026-10-25', '02:30')).toEqual(
+        new Date('2026-10-25T01:30:00Z'),
+      )
+    })
+
+    it('resolves an unambiguous time later that day as CET', () => {
+      expect(instantFromLocalTime('2026-10-25', '12:00')).toEqual(
+        new Date('2026-10-25T11:00:00Z'),
+      )
+    })
   })
 })
