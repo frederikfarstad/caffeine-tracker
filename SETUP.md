@@ -17,8 +17,17 @@ awake — so nothing about leaving a tab open can cost you money.
 **Install the CLI**
 
 ```bash
-curl -sSfL https://tur.so/install.sh | bash
+brew tap libsql/sqld
+brew trust --formula libsql/sqld/sqld
+brew install tursodatabase/tap/turso
 ```
+
+The `turso` formula depends on `sqld`, the libsql server, which lives in its own
+tap. Homebrew now refuses to load formulae from untrusted taps, so the middle
+line is required — without it the install stops with `Refusing to load formula
+libsql/sqld/sqld`. Trusting the single formula rather than `brew trust
+libsql/sqld` keeps the grant narrow: the whole-tap form also covers anything
+added to that tap later.
 
 **Sign up and log in.** This opens a browser.
 
@@ -53,18 +62,34 @@ Free, no billing account, and no app-review process — you're only requesting
 
 1. Open the [Google Cloud Console](https://console.cloud.google.com/) and
    create a project. Call it whatever you like.
-2. Go to **APIs & Services → OAuth consent screen**.
+2. Go to **APIs & Services → OAuth consent screen**. What used to be one wizard
+   is now the Google Auth Platform, split across pages in the left sidebar.
+   Fill in **Branding**:
+   - **App name**: `Ovio Buzz`.
+   - **User support email**: pick your address from the dropdown.
+   - **Developer contact information → Email addresses**: your address again.
+     It sits at the bottom of the page and is easy to miss.
+
+   Leave the home page and privacy policy URLs blank for now — Google only
+   accepts them once the app is actually reachable at that URL. You'll come back
+   for them in step 4.
+3. Go to **Audience**.
    - User type: **External**.
-   - Fill in the app name (`Ovio Buzz`), your email, and a developer contact.
-   - On the Scopes step add nothing — the defaults are what you want.
-   - Finish, then click **Publish app**. Leave it in Testing and only a
-     manually-listed handful of accounts can sign in.
-3. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+   - **Leave the publishing status on Testing** and add your own Google account
+     under **Test users**. Testing is everything you need to develop against;
+     publishing comes later, once there's a URL to point Google at.
+4. Go to **Clients → Create client**.
    - Application type: **Web application**.
    - Under **Authorised redirect URIs**, add both:
      - `http://localhost:3000/api/auth/callback/google`
-     - `https://YOUR-VERCEL-DOMAIN/api/auth/callback/google`
+     - `https://caffeine-tracker-seven.vercel.app/api/auth/callback/google`
    - Create, then copy the **Client ID** and **Client secret**.
+
+> **Why not publish now?** Switching to production makes Google demand a home
+> page URL and a privacy policy URL on a domain it will accept, and you won't
+> have either until the app is deployed. Try it early and you get *"Valid app
+> name, support email, homepage url, and privacy policy url are required for
+> switching the app to external production mode"* with no way forward.
 
 > **Coworkers use personal Google accounts.** Nothing here touches Bekk's
 > Microsoft tenant, so no IT ticket and no admin consent. Access is controlled
@@ -123,8 +148,23 @@ Open http://localhost:3000, sign in with Google, enter your team code. Port
 2. Before the first deploy, add all seven environment variables from the table
    above under **Environment Variables**. Use the Turso URL and token, not
    `file:local.db`.
-3. Deploy. Then copy your production URL back into the Google Console as a
-   redirect URI if you used a placeholder earlier.
+3. Deploy, then go back to the Google Console and finish what step 2 deferred:
+   - **Clients → your client**: check that
+     `https://caffeine-tracker-seven.vercel.app/api/auth/callback/google` is
+     listed under **Authorised redirect URIs**. It should be, from step 2.
+   - **Branding**: set **Application home page** to
+     `https://caffeine-tracker-seven.vercel.app` and **Privacy policy link** to
+     `https://caffeine-tracker-seven.vercel.app/privacy`. That page ships with
+     the app and renders without a session, which is what Google requires. Add
+     `caffeine-tracker-seven.vercel.app` under **Authorised domains** if
+     prompted.
+   - **Audience → Publish app**. No review and no "unverified app" warning:
+     `email` and `profile` are non-sensitive scopes.
+
+   Until you publish, only accounts on the **Test users** list can sign in —
+   everyone else gets `Error 403: access_denied`. Publishing lets any Google
+   account reach the sign-in, which is safe here because the join code, not
+   Google, is what actually grants access.
 4. Point the production database at the migrations once:
 
 ```bash
@@ -138,7 +178,8 @@ TURSO_DATABASE_URL="<your turso url>" TURSO_AUTH_TOKEN="<your token>" npx tsx sr
 Migrations run deliberately, not during `build` — builds fire on every preview
 deploy, and you don't want schema changes riding along with them.
 
-Share the URL and the join code in Slack. That's it.
+Share <https://caffeine-tracker-seven.vercel.app> and the join code in Slack.
+That's it.
 
 ---
 
