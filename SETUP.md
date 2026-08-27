@@ -1,4 +1,4 @@
-# Setting up Ovio Buzz
+# Setting up Buzz
 
 Three services need your credentials, so they can't be automated. Budget about
 25 minutes for the lot. Everything is on a free tier — see
@@ -65,7 +65,7 @@ Free, no billing account, and no app-review process — you're only requesting
 2. Go to **APIs & Services → OAuth consent screen**. What used to be one wizard
    is now the Google Auth Platform, split across pages in the left sidebar.
    Fill in **Branding**:
-   - **App name**: `Ovio Buzz`.
+   - **App name**: `Buzz`.
    - **User support email**: pick your address from the dropdown.
    - **Developer contact information → Email addresses**: your address again.
      It sits at the bottom of the page and is easy to miss.
@@ -221,5 +221,5 @@ going quiet, not a surprise bill.
 
 **One licensing note.** Vercel's Hobby plan is for personal, non-commercial use.
 A free internal tracker with no ads or payments sits within the spirit of that,
-but if Ovio treats this as a company tool, the honest answer is Pro at
+but if Ovio or Teoria treats this as a company tool, the honest answer is Pro at
 $20/month.

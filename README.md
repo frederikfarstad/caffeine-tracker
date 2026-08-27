@@ -1,6 +1,6 @@
-# Ovio Buzz
+# Buzz
 
-A caffeine tracker for the Ovio team. Log every coffee and energy drink in one
+A caffeine tracker for the Ovio and Teoria teams. Log every coffee and energy drink in one
 tap, then argue about the leaderboard.
 
 Getting it running takes about 25 minutes and costs nothing — see
@@ -15,8 +15,8 @@ Getting it running takes about 25 minutes and costs nothing — see
   so the shake is a second reading of the same number.
 - **Personal stats.** Caffeine, drinks, rank and streak, by day / week / month /
   all time, with a chart of your intake over time.
-- **A leaderboard.** Who's running Ovio, per period, with ties sharing a rank.
-- **Team charts.** Ovio's combined intake over time, which hour the office
+- **A leaderboard.** Who's running the place, per period, with ties sharing a rank.
+- **Team charts.** Combined intake over time, which hour the office
   actually peaks, and coffee against energy drinks.
 - **Editable drink types.** Admins can tune caffeine estimates or add drinks.
   Edits apply to new logs only — history never moves.

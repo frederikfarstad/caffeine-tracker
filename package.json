@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "icons": "tsx scripts/generate-icons.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- tsx src/db/migrate.ts",
     "db:studio": "dotenv -e .env.local -- drizzle-kit studio",

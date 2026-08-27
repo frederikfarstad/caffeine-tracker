@@ -5,7 +5,7 @@ import { db } from '@/db'
 import { drinkTypes } from '@/db/schema'
 import { requireAdmin } from '@/server/auth'
 
-export const metadata = { title: 'Drinks — Ovio Buzz' }
+export const metadata = { title: 'Drinks — Buzz' }
 
 export default async function AdminPage() {
   await requireAdmin()

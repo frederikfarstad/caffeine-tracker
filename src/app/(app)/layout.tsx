@@ -4,7 +4,7 @@ import { requireMember, signOut } from '@/server/auth'
 const NAV = [
   { href: '/', label: 'Me' },
   { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/team', label: 'Ovio' },
+  { href: '/team', label: 'Everyone' },
 ]
 
 const ADMIN_NAV = { href: '/admin', label: 'Drinks' }
@@ -26,8 +26,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="mx-auto flex min-h-dvh max-w-4xl flex-col px-4 pb-16 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
-        <Link href="/" className="display text-2xl tracking-tight text-foam">
-          ovio<span className="text-crema">buzz</span>
+        {/*
+         * The wordmark carries one name, so the two teams sit above it as an
+         * eyebrow rather than inside it — "oviobuzz" cannot be made to include
+         * Teoria without reading as a third team.
+         */}
+        <Link href="/" className="block">
+          <span className="legend block text-[0.5625rem] leading-none">Ovio · Teoria</span>
+          <span className="display text-2xl leading-none tracking-tight text-foam">
+            buzz<span className="text-crema">.</span>
+          </span>
         </Link>
 
         <nav aria-label="Sections" className="order-3 flex w-full gap-1 sm:order-2 sm:w-auto">

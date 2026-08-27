@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { currentUser, signIn } from '@/server/auth'
 
-export const metadata = { title: 'Sign in — Ovio Buzz' }
+export const metadata = { title: 'Sign in — Buzz' }
 
 export default async function SignInPage() {
   if (await currentUser()) redirect('/')
@@ -14,12 +14,12 @@ export default async function SignInPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-10 px-6 py-16">
       <div className="space-y-3">
-        <p className="legend">Ovio · caffeine tracker</p>
+        <p className="legend">Ovio · Teoria · caffeine tracker</p>
         <h1 className="display text-6xl leading-none tracking-tight text-foam">
-          ovio<span className="text-crema">buzz</span>
+          buzz<span className="text-crema">.</span>
         </h1>
         <p className="max-w-xs text-sm leading-relaxed text-oat">
-          Every cup. Every can. One leaderboard. Settle who is actually running Ovio.
+          Every cup. Every can. One leaderboard. Settle who is actually running Ovio and Teoria.
         </p>
       </div>
 
@@ -33,7 +33,7 @@ export default async function SignInPage() {
       </form>
 
       <p className="text-xs leading-relaxed text-oat">
-        Any Google account works — a personal one is fine. You&apos;ll enter the Ovio code once
+        Any Google account works — a personal one is fine. You&apos;ll enter the team code once
         after signing in.
       </p>
     </main>

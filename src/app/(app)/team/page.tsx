@@ -11,7 +11,7 @@ import { PERIOD_TITLES, formatBucketLabel } from '@/lib/format'
 import { requireMember } from '@/server/auth'
 import { getTeamHourHistogram, getTeamSplit, getTeamTimeSeries } from '@/server/stats'
 
-export const metadata = { title: 'Team — Ovio Buzz' }
+export const metadata = { title: 'Everyone — Buzz' }
 
 export default async function TeamDashboard({
   searchParams,
@@ -40,7 +40,7 @@ export default async function TeamDashboard({
         <div>
           <p className="legend">Everyone combined</p>
           <h1 className="display text-3xl leading-tight tracking-tight text-foam">
-            Ovio, all of it
+            Ovio and Teoria, all of it
           </h1>
         </div>
         <PeriodTabs active={period} basePath="/team" />
@@ -65,7 +65,9 @@ export default async function TeamDashboard({
         <>
           <ChartFrame
             legend={`Milligrams · ${PERIOD_TITLES[period]}`}
-            title={period === 'today' ? 'Ovio today, hour by hour' : 'Ovio caffeine over time'}
+            title={
+              period === 'today' ? 'Today, hour by hour' : 'Combined caffeine over time'
+            }
             columns={['Caffeine (mg)']}
             rows={series.map((point) => ({
               label: formatBucketLabel(point.bucket, period),
@@ -77,7 +79,7 @@ export default async function TeamDashboard({
 
           <ChartFrame
             legend="Milligrams · by hour of day"
-            title="When Ovio drinks"
+            title="When everyone drinks"
             columns={['Caffeine (mg)']}
             rows={hours.map((bar) => ({
               label: `${String(bar.hour).padStart(2, '0')}:00`,
@@ -102,7 +104,7 @@ export default async function TeamDashboard({
         </>
       ) : (
         <p className="panel px-4 py-8 text-center text-sm text-oat">
-          Nothing logged {PERIOD_TITLES[period]}. Ovio&apos;s charts appear the moment someone
+          Nothing logged {PERIOD_TITLES[period]}. The charts appear the moment someone
           pours a coffee.
         </p>
       )}

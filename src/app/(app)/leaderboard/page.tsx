@@ -7,7 +7,7 @@ import { PERIOD_TITLES } from '@/lib/format'
 import { requireMember } from '@/server/auth'
 import { getLeaderboard } from '@/server/stats'
 
-export const metadata = { title: 'Leaderboard — Ovio Buzz' }
+export const metadata = { title: 'Leaderboard — Buzz' }
 
 export default async function LeaderboardPage({
   searchParams,
@@ -28,7 +28,7 @@ export default async function LeaderboardPage({
         <div>
           <p className="legend">Ranked by caffeine</p>
           <h1 className="display text-3xl leading-tight tracking-tight text-foam">
-            Who&apos;s running Ovio
+            Who&apos;s running the place
           </h1>
         </div>
         <PeriodTabs active={period} basePath="/leaderboard" />
@@ -39,7 +39,7 @@ export default async function LeaderboardPage({
           <span className="text-foam">
             {leaders.map((row) => row.displayName).join(' and ')}
           </span>{' '}
-          {leaders.length > 1 ? 'are running Ovio' : 'is running Ovio'} {PERIOD_TITLES[period]}, on{' '}
+          {leaders.length > 1 ? 'are running the place' : 'is running the place'} {PERIOD_TITLES[period]}, on{' '}
           {formatMg(leaders[0].totalMg)}.
         </p>
       )}

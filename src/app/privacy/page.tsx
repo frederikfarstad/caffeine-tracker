@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-export const metadata = { title: 'Privacy — Ovio Buzz' }
+export const metadata = { title: 'Privacy — Buzz' }
 
 /*
  * Deliberately outside the (app) route group, so it renders without a session.
@@ -11,11 +11,11 @@ export default function PrivacyPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-8 px-6 py-16">
       <div className="space-y-3">
-        <p className="legend">Ovio Buzz</p>
+        <p className="legend">Buzz</p>
         <h1 className="display text-4xl leading-tight tracking-tight text-foam">Privacy</h1>
         <p className="text-sm leading-relaxed text-oat">
-          Ovio Buzz is an internal caffeine leaderboard for one team. It is not a commercial
-          product and there is nothing clever going on with your data.
+          Buzz is an internal caffeine leaderboard for the Ovio and Teoria teams. It is not a
+          commercial product and there is nothing clever going on with your data.
         </p>
       </div>
 
@@ -64,7 +64,7 @@ export default function PrivacyPage() {
       </div>
 
       <Link href="/" className="text-xs text-crema underline underline-offset-4">
-        Back to Ovio Buzz
+        Back to Buzz
       </Link>
     </main>
   )
