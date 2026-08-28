@@ -31,7 +31,8 @@ Getting it running takes about 25 minutes and costs nothing — see
 ## Stack
 
 Next.js (App Router) · TypeScript · Tailwind CSS · Auth.js with Google ·
-Drizzle ORM · Turso (libSQL) · Recharts · Vitest. Deploys to Vercel.
+Drizzle ORM · Turso (libSQL) · Recharts · Vitest. Deploys to Vercel, with
+GitHub Actions holding the gate and owning the production database.
 
 ## Commands
 
@@ -58,6 +59,10 @@ npm run build
 | `npm run db:seed` | Insert the starting drink types (idempotent) |
 | `npm run db:studio` | Browse the database |
 | `npm run db:rebuild-rollup` | Check `daily_totals` against `drink_logs`, then rebuild |
+
+`db:migrate` and `db:seed` read `.env.local`. `db:migrate:ci` and `db:seed:ci`
+are the same two commands without that wrapper, for CI, where the environment
+is already set.
 
 ## How it's put together
 
@@ -114,7 +119,7 @@ at the type level.
 npm test
 ```
 
-430 tests. The ones that matter most:
+439 tests. The ones that matter most:
 
 - `lib/time.test.ts` — both Oslo DST transitions, and the nightly window where
   the UTC date and the Oslo date disagree.
@@ -136,8 +141,42 @@ different, empty database.
 ## Contributing
 
 Contributions are welcome, and the rules are unusual: everything here is
-vibe-coded, `main` is protected, and no human reads the pull requests — CI does.
-Read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening one.
+vibe-coded, and no human reads the pull requests. Read
+**[CONTRIBUTING.md](CONTRIBUTING.md)** before opening one.
+
+`main` is protected. Pull requests only, linear history, squash merges, no
+force pushes, and four checks that all have to be green:
+
+| Check | What it runs |
+|---|---|
+| `quality` | `npm run lint` and `npm run typecheck` |
+| `test` | `npm test` |
+| `schema` | `npm run db:generate`, then a diff — `src/db/schema.ts` may not change without a committed migration |
+| `build` | `npm run build`, on placeholder credentials |
+
+None of them needs a secret, so a fork runs the whole suite. Required approvals
+are zero, because requiring one nobody intends to give would deadlock the
+repository; an unresolved comment thread is the human veto instead, and admins
+can still push when the building is on fire. `scripts/protect-main.sh` sets all
+of this, and is idempotent.
+
+An agent reviewer reads each diff against the five decisions above, if the
+repository has an `ANTHROPIC_API_KEY` secret. Its verdict is advisory — the
+checks are the gate.
+
+## How it deploys
+
+Vercel deploys the app from its own git integration. GitHub Actions owns the
+database: on every push to `main` it re-runs all four checks — a squash merge
+produces a commit no pull request ever tested — and only then applies pending
+migrations and seeds the drink types, against the `TURSO_DATABASE_URL` and
+`TURSO_AUTH_TOKEN` held in a `production` environment. Both steps are no-ops
+when there is nothing to do, so an ordinary merge touches nothing.
+
+The two halves do not wait for each other, and that is the one constraint worth
+remembering: **migrations must be safe against the currently deployed code**,
+because for a minute or so around a merge the old revision runs against the new
+schema. Add columns freely; split a drop or a rename across two deploys.
 
 ## A note on the 400 mg figure
 
