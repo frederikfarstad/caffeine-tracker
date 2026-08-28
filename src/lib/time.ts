@@ -14,6 +14,19 @@ export type Period = 'today' | 'week' | 'month' | 'all'
 
 export const PERIODS: readonly Period[] = ['today', 'week', 'month', 'all'] as const
 
+/**
+ * The periods party mode can slice by.
+ *
+ * "All time" is excluded at the type level rather than merely omitted from a
+ * tab strip, because it is not a UI preference. Caffeine can answer it cheaply
+ * by reading `daily_totals`; alcohol has no such rollup, so an open-ended range
+ * would scan every row ever written and get linearly worse forever. A type that
+ * cannot express the query is the cheapest place to enforce that.
+ */
+export type PartyPeriod = Exclude<Period, 'all'>
+
+export const PARTY_PERIODS: readonly PartyPeriod[] = ['today', 'week', 'month'] as const
+
 /** A calendar date in `YYYY-MM-DD` form, as observed in {@link APP_TIMEZONE}. */
 export type LocalDate = string
 
