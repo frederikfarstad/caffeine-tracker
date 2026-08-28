@@ -1,0 +1,58 @@
+name: Deploy
+
+# The app itself is deployed by Vercel's git integration on push to main. This
+# workflow owns the database: it brings the schema and the starting drink types
+# up to date, and it refuses to touch them unless every check has passed first.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Never let two migration runs overlap, and never cancel one halfway.
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # The same jobs a pull request had to pass. A squash merge creates a commit
+    # that no pull request ever tested, so they run again on the result.
+    uses: ./.github/workflows/ci.yml
+
+  database:
+    name: migrate and seed
+    needs: verify
+    runs-on: ubuntu-latest
+    # Point this at a GitHub environment holding the two Turso secrets, so the
+    # credentials exist on main and nowhere else. Fork pull requests cannot
+    # reach them.
+    environment: production
+    env:
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+
+      - name: Fail early if the database secrets are missing
+        run: |
+          if [ -z "$TURSO_DATABASE_URL" ]; then
+            echo '::error::TURSO_DATABASE_URL is not set on the production environment. See CONTRIBUTING.md.'
+            exit 1
+          fi
+
+      # Both steps are no-ops when there is nothing to do: the migrator applies
+      # only migrations absent from the target, and the seed inserts drink types
+      # with onConflictDoNothing, so hand-tuned caffeine values survive.
+      - name: Apply pending migrations
+        run: npm run db:migrate:ci
+
+      - name: Seed the starting drink types
+        run: npm run db:seed:ci

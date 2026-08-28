@@ -1,0 +1,100 @@
+name: CI
+
+# Runs on every pull request, and is called by the Deploy workflow so that a
+# push to main is gated on exactly the same checks a pull request faced.
+on:
+  pull_request:
+  merge_group:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Integration tests build their own libSQL database files from the
+      # committed migrations, so this needs no database and no secrets.
+      - run: npm test
+
+  schema:
+    name: schema
+    runs-on: ubuntu-latest
+    env:
+      # drizzle-kit generate reads the schema, never the database, but the
+      # config wants a URL present.
+      TURSO_DATABASE_URL: file:ci.db
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # A migration that was never generated is the one failure the test suite
+      # cannot see: the tests migrate from src/db/migrations, so a schema.ts
+      # edit with no matching migration passes locally and then breaks
+      # production. Generating here must be a no-op.
+      - name: Migrations match src/db/schema.ts
+        run: |
+          npm run db:generate
+          if [ -n "$(git status --porcelain src/db/migrations)" ]; then
+            echo '::error::src/db/schema.ts has changes with no migration. Run `npm run db:generate` and commit the result.'
+            git status --short src/db/migrations
+            exit 1
+          fi
+          echo 'Schema and migrations are in sync.'
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    env:
+      # A production build prerenders pages, which loads the modules that read
+      # these. Placeholders are enough: nothing here is contacted at build
+      # time, and CI must never need real credentials.
+      TURSO_DATABASE_URL: file:ci.db
+      AUTH_SECRET: ci-placeholder-not-a-real-secret
+      AUTH_GOOGLE_ID: ci-placeholder
+      AUTH_GOOGLE_SECRET: ci-placeholder
+      TEAM_JOIN_CODE: ci-placeholder
+      ADMIN_EMAILS: ''
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('src/**/*.ts', 'src/**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-
+      - run: npm run build

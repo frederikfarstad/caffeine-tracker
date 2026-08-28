@@ -133,6 +133,12 @@ rather than `:memory:` deliberately: `@libsql/client` opens a separate
 connection for a transaction, and a second connection to `:memory:` is a
 different, empty database.
 
+## Contributing
+
+Contributions are welcome, and the rules are unusual: everything here is
+vibe-coded, `main` is protected, and no human reads the pull requests — CI does.
+Read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening one.
+
 ## A note on the 400 mg figure
 
 400 mg per day and 200 mg in a single dose come from
