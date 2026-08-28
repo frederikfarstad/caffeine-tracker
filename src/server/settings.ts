@@ -19,6 +19,16 @@ export const MAX_HALF_LIFE_HOURS = 12
 export const MIN_THRESHOLD_MG = 10
 export const MAX_THRESHOLD_MG = 200
 
+/**
+ * The range a body weight can sensibly take, for the alcohol model.
+ *
+ * Wide on purpose. This is a divisor in the Widmark denominator, so the floor
+ * is there to stop a typo producing an alarming permille figure — not to
+ * police anyone's weight.
+ */
+export const MIN_WEIGHT_KG = 35
+export const MAX_WEIGHT_KG = 250
+
 /** `HH:MM` on a 24-hour clock, which is what `input[type=time]` submits. */
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -33,12 +43,33 @@ const settingsSchema = z.object({
     .min(MIN_THRESHOLD_MG, `Use at least ${MIN_THRESHOLD_MG} mg — below that the answer is always "now".`)
     .max(MAX_THRESHOLD_MG, `Over ${MAX_THRESHOLD_MG} mg the threshold stops meaning anything.`),
   bedtimeLocal: z.string().regex(TIME_PATTERN, 'Use a bedtime like 23:00.'),
+  /*
+   * Both party-mode fields accept an empty string, which means "not given" and
+   * is a valid answer: the alcohol model has a defensible population fallback,
+   * and `bodyProfileFrom` reports which one it used. The caffeine numbers above
+   * have no such fallback, which is why they are required and these are not.
+   */
+  bodyWeightKg: z
+    .union([
+      z.literal(''),
+      z.coerce
+        .number({ message: 'Give a weight in kilograms.' })
+        .min(MIN_WEIGHT_KG, `Use at least ${MIN_WEIGHT_KG} kg.`)
+        .max(MAX_WEIGHT_KG, `Over ${MAX_WEIGHT_KG} kg is not a weight this can model.`),
+    ])
+    .transform((value) => (value === '' ? null : Math.round(value))),
+  sex: z
+    .union([z.literal(''), z.enum(['male', 'female'])])
+    .transform((value) => (value === '' ? null : value)),
 })
 
 export type MemberSettings = {
   eliminationHalfLifeMinutes: number
   sleepThresholdMg: number
   bedtimeLocal: string
+  /** Both null unless the member chose to give them. See `blood-alcohol.ts`. */
+  bodyWeightKg: number | null
+  sex: 'male' | 'female' | null
 }
 
 export type ParsedSettings =
@@ -58,6 +89,8 @@ export function parseSettings(input: {
   halfLifeHours: string
   sleepThresholdMg: string
   bedtimeLocal: string
+  bodyWeightKg?: string
+  sex?: string
 }): ParsedSettings {
   // Empty strings coerce to 0, which then fails the range check with a message
   // about range rather than about emptiness — so reject them up front.
@@ -72,6 +105,8 @@ export function parseSettings(input: {
     // what was typed, and a rejected "5,5" would arrive as a confusing range
     // error rather than as the number the person meant.
     halfLifeHours: input.halfLifeHours.replace(',', '.'),
+    bodyWeightKg: (input.bodyWeightKg ?? '').replace(',', '.'),
+    sex: input.sex ?? '',
   })
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0].message }
@@ -83,6 +118,8 @@ export function parseSettings(input: {
       eliminationHalfLifeMinutes: Math.round(parsed.data.halfLifeHours * 60),
       sleepThresholdMg: parsed.data.sleepThresholdMg,
       bedtimeLocal: parsed.data.bedtimeLocal,
+      bodyWeightKg: parsed.data.bodyWeightKg,
+      sex: parsed.data.sex,
     },
   }
 }
@@ -116,4 +153,15 @@ export async function markPatchNoteSeen(
         ? eq(members.userId, userId)
         : and(eq(members.userId, userId), eq(members.lastSeenPatchNote, previousNoteId)),
     )
+}
+
+/**
+ * Switch party mode on or off for one member.
+ *
+ * Separate from {@link saveMemberSettings} because it is a button, not a form:
+ * the settings page saves five fields at once, and this saves one from a
+ * different page entirely.
+ */
+export async function setPartyMode(db: AnyDb, userId: string, on: boolean): Promise<void> {
+  await db.update(members).set({ partyMode: on }).where(eq(members.userId, userId))
 }

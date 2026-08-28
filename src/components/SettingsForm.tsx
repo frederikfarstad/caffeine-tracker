@@ -5,8 +5,10 @@ import { saveSettings, type SettingsFormState } from '@/app/(app)/settings/actio
 import {
   MAX_HALF_LIFE_HOURS,
   MAX_THRESHOLD_MG,
+  MAX_WEIGHT_KG,
   MIN_HALF_LIFE_HOURS,
   MIN_THRESHOLD_MG,
+  MIN_WEIGHT_KG,
 } from '@/server/settings'
 
 const initialState: SettingsFormState = { error: null, notice: null }
@@ -15,21 +17,30 @@ const FIELD_CLASS =
   'w-full rounded-md border border-hairline bg-roast px-3 py-2 text-sm text-foam focus:border-crema focus:outline-none'
 
 /**
- * The three numbers the caffeine model can't guess.
+ * The numbers the models can't guess.
  *
  * Each field carries its own explanation rather than deferring to a help page,
  * because nobody knows their own caffeine half-life and a bare number input
  * invites people to type something worse than the default. The copy's job is to
  * make leaving it alone feel like a decision.
+ *
+ * The three caffeine fields are required; the two party-mode ones below the
+ * rule are not, and that asymmetry is real rather than an oversight. A caffeine
+ * curve needs a half-life to exist at all, where the alcohol model has a
+ * defensible average to fall back on and says so on the readout.
  */
 export function SettingsForm({
   halfLifeHours,
   sleepThresholdMg,
   bedtimeLocal,
+  bodyWeightKg,
+  sex,
 }: {
   halfLifeHours: number
   sleepThresholdMg: number
   bedtimeLocal: string
+  bodyWeightKg: number | null
+  sex: 'male' | 'female' | null
 }) {
   const [state, action, pending] = useActionState(saveSettings, initialState)
 
@@ -98,6 +109,59 @@ export function SettingsForm({
           Used for one thing: working out how late you could still have a drink and be under your
           threshold once you turn in.
         </p>
+      </div>
+
+      <div className="space-y-5 border-t border-hairline pt-5">
+        <div className="space-y-1">
+          <p className="legend">Party mode · optional</p>
+          <p className="max-w-prose text-xs leading-relaxed text-oat">
+            Read only when party mode is on, and only to estimate blood alcohol — which depends on
+            the size of the body the alcohol is in, where milligrams of caffeine do not. Leave both
+            blank and the estimate uses an average adult: 80 kg, and the midpoint of the two
+            distribution ratios. The readout says which it used.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="bodyWeightKg" className="legend block">
+            Body weight · kg
+          </label>
+          <input
+            id="bodyWeightKg"
+            name="bodyWeightKg"
+            type="number"
+            step="1"
+            min={MIN_WEIGHT_KG}
+            max={MAX_WEIGHT_KG}
+            defaultValue={bodyWeightKg ?? ''}
+            className={`${FIELD_CLASS} font-gauge max-w-32`}
+          />
+          <p className="text-xs leading-relaxed text-oat">
+            The denominator in the Widmark estimate. A heavier body reaches a lower peak on the
+            same drinks, which is most of why one figure cannot fit everybody.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="sex" className="legend block">
+            Widmark ratio
+          </label>
+          <select
+            id="sex"
+            name="sex"
+            defaultValue={sex ?? ''}
+            className={`${FIELD_CLASS} font-gauge max-w-56`}
+          >
+            <option value="">Average of the two</option>
+            <option value="male">Male · 0.68</option>
+            <option value="female">Female · 0.55</option>
+          </select>
+          <p className="text-xs leading-relaxed text-oat">
+            The fraction of the body that is water, which is what alcohol spreads through. The two
+            figures are Widmark&apos;s, and they are averages of populations rather than facts
+            about anybody in particular.
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-hairline pt-4">

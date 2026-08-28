@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { parseSettings } from './settings'
 
-/** The form's own defaults, which every account starts on. */
-const valid = { halfLifeHours: '5', sleepThresholdMg: '50', bedtimeLocal: '23:00' }
+/**
+ * The form's own defaults, which every account starts on.
+ *
+ * The two body fields are empty rather than absent: empty is what an untouched
+ * form submits, and it is a valid answer for them where it is not for the
+ * caffeine numbers.
+ */
+const valid = {
+  halfLifeHours: '5',
+  sleepThresholdMg: '50',
+  bedtimeLocal: '23:00',
+  bodyWeightKg: '',
+  sex: '',
+}
 
 describe('parseSettings', () => {
   it('accepts the defaults', () => {
@@ -12,6 +24,8 @@ describe('parseSettings', () => {
         eliminationHalfLifeMinutes: 300,
         sleepThresholdMg: 50,
         bedtimeLocal: '23:00',
+        bodyWeightKg: null,
+        sex: null,
       },
     })
   })
@@ -82,5 +96,51 @@ describe('parseSettings', () => {
     const parsed = parseSettings({ ...valid, halfLifeHours: '99' })
     if (parsed.ok) throw new Error('unreachable')
     expect(parsed.message).toMatch(/hours/i)
+  })
+})
+
+describe('parseSettings — the body fields', () => {
+  it('treats both as optional', () => {
+    const parsed = parseSettings({ ...valid, bodyWeightKg: '', sex: '' })
+    expect(parsed).toMatchObject({ ok: true })
+    if (!parsed.ok) throw new Error('unreachable')
+    expect(parsed.settings.bodyWeightKg).toBeNull()
+    expect(parsed.settings.sex).toBeNull()
+  })
+
+  it('accepts a weight and a sex', () => {
+    const parsed = parseSettings({ ...valid, bodyWeightKg: '72', sex: 'female' })
+    expect(parsed).toMatchObject({ ok: true })
+    if (!parsed.ok) throw new Error('unreachable')
+    expect(parsed.settings.bodyWeightKg).toBe(72)
+    expect(parsed.settings.sex).toBe('female')
+  })
+
+  // Same Norwegian-keyboard reasoning as the half-life field above.
+  it('accepts a comma as the decimal separator, and rounds to a whole kilogram', () => {
+    const parsed = parseSettings({ ...valid, bodyWeightKg: '72,5' })
+    expect(parsed).toMatchObject({ ok: true })
+    if (!parsed.ok) throw new Error('unreachable')
+    expect(parsed.settings.bodyWeightKg).toBe(73)
+  })
+
+  it('refuses a weight outside the range the model can describe', () => {
+    expect(parseSettings({ ...valid, bodyWeightKg: '5' })).toMatchObject({ ok: false })
+    expect(parseSettings({ ...valid, bodyWeightKg: '400' })).toMatchObject({ ok: false })
+  })
+
+  it('accepts the bounds themselves', () => {
+    expect(parseSettings({ ...valid, bodyWeightKg: '35' })).toMatchObject({ ok: true })
+    expect(parseSettings({ ...valid, bodyWeightKg: '250' })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a sex it does not have a ratio for', () => {
+    expect(parseSettings({ ...valid, sex: 'yes' })).toMatchObject({ ok: false })
+  })
+
+  it('still refuses a bad half-life when the body fields are fine', () => {
+    expect(
+      parseSettings({ ...valid, halfLifeHours: '99', bodyWeightKg: '72', sex: 'male' }),
+    ).toMatchObject({ ok: false })
   })
 })

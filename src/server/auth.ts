@@ -5,6 +5,7 @@ import Google from 'next-auth/providers/google'
 import { redirect } from 'next/navigation'
 import { db } from '@/db'
 import { accounts, members, sessions, users, verificationTokens } from '@/db/schema'
+import { bodyProfileFrom, type BodyProfile } from '@/lib/blood-alcohol'
 import type { Profile } from '@/lib/blood-caffeine'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -66,6 +67,16 @@ export type Member = {
   /** `HH:MM` in Oslo. */
   bedtimeLocal: string
   lastSeenPatchNote: string | null
+  /** Whether the alcohol section and the party page are switched on. */
+  partyMode: boolean
+  /**
+   * How the alcohol model sees this person: their own figures if they gave any,
+   * population ones otherwise. `personal` says which, and the UI must too.
+   */
+  bodyProfile: BodyProfile
+  /** The raw settings, for the form to render back. */
+  bodyWeightKg: number | null
+  sex: 'male' | 'female' | null
 }
 
 /**
@@ -91,6 +102,10 @@ function toMember(
     },
     bedtimeLocal: row.bedtimeLocal,
     lastSeenPatchNote: row.lastSeenPatchNote,
+    partyMode: row.partyMode,
+    bodyProfile: bodyProfileFrom({ bodyWeightKg: row.bodyWeightKg, sex: row.sex }),
+    bodyWeightKg: row.bodyWeightKg,
+    sex: row.sex,
   }
 }
 

@@ -23,6 +23,8 @@ export async function saveSettings(
     halfLifeHours: String(formData.get('halfLifeHours') ?? ''),
     sleepThresholdMg: String(formData.get('sleepThresholdMg') ?? ''),
     bedtimeLocal: String(formData.get('bedtimeLocal') ?? ''),
+    bodyWeightKg: String(formData.get('bodyWeightKg') ?? ''),
+    sex: String(formData.get('sex') ?? ''),
   })
 
   if (!parsed.ok) {
