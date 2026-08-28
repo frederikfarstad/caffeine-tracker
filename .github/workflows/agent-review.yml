@@ -1,0 +1,67 @@
+name: Agent review
+
+# Nobody is going to read your pull request, so something has to. The status
+# checks in CI are the gate; this is the reviewer that reads the diff and
+# argues with it.
+#
+# Opt-in: set the ANTHROPIC_API_KEY repository secret. Without it the job
+# reports success and does nothing, so the repository still works for anyone
+# who clones it. Fork pull requests do not receive secrets either, so a fork's
+# review has to be triggered from the Actions tab by a maintainer.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: agent review
+    runs-on: ubuntu-latest
+    # Job level, not step level: a step's own `env` is not in scope for that
+    # step's `if`, so the skip-without-a-key check has to read it from here.
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Review the diff
+        if: env.ANTHROPIC_API_KEY != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            Review this pull request against AGENTS.md, CONTRIBUTING.md and the
+            "How it's put together" section of README.md.
+
+            Assume no human will read either the diff or your review before the
+            pull request merges, so say what is wrong rather than what is
+            merely worth considering.
+
+            Weigh these in order:
+
+            1. Does it break one of the five decisions the README names?
+               Membership as the access grant; caffeine_mg as a snapshot rather
+               than a join; local dates computed at write time; daily_totals as
+               a rollup that stats.ts hides; alcohol as a parallel path that
+               never enters a caffeine statistic.
+            2. Does every behavioural change have a test that would fail
+               without it? Name any that does not.
+            3. Does a schema.ts change have a matching generated migration, and
+               is that migration safe against the currently deployed code?
+               Vercel deploys the new revision while the migration runs, so the
+               old code has to survive the new schema.
+            4. Does it read like the code around it — same comment density,
+               same naming, comments explaining why and not what?
+            5. Correctness: timezone handling, authorization on server actions,
+               and anything that would make a statistic silently wrong rather
+               than visibly broken.
+
+            Leave line comments where they belong. End with a verdict of
+            APPROVE or REQUEST CHANGES and one sentence of reasoning.

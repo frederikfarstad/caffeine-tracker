@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="face" cx="32" cy="41" r="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f221c"/>
+      <stop offset="1" stop-color="#150f0d"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#face)"/>
+  <g transform="translate(32 32) scale(1) translate(-32 -32)" fill="none" stroke-linecap="round">
+    <path d="M 11.00 41.00 A 21 21 0 0 1 38.49 21.03" stroke="#b79e8e" stroke-width="5"/>
+    <path d="M 38.49 21.03 A 21 21 0 0 1 53.00 41.00" stroke="#f0a857" stroke-width="5"/>
+    <!-- Pointer in foam, not crema: sharing the marked range's colour fused
+         the two into one shape. Needle and hub are one object, as on a real
+         gauge, so they wear one colour.
+
+         No centre pin. It sharpened the hub at 512 and turned it to grey mush
+         at 40, where the icon actually lives. -->
+    <path d="M 34.40 43.55 L 42.21 31.42 L 29.60 38.45 Z" fill="#f5ede4" stroke="none"/>
+    <circle cx="32" cy="41" r="4.5" fill="#f5ede4" stroke="none"/>
+  </g>
+</svg>

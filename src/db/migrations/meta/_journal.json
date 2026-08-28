@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787735079130,
+      "tag": "0000_amused_liz_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787735209220,
+      "tag": "0001_friendly_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787735651925,
+      "tag": "0002_add_category_mg",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787746758868,
+      "tag": "0003_add_created_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787830281341,
+      "tag": "0004_member_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787831413879,
+      "tag": "0005_drink_provenance_and_volume",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787905974426,
+      "tag": "0006_party_mode",
+      "breakpoints": true
+    }
+  ]
+}

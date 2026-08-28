@@ -1,0 +1,208 @@
+@import 'tailwindcss';
+
+/*
+ * Design language: a dark roast.
+ *
+ * The palette is pulled off a coffee bean and the drink it makes — roasted
+ * near-black with warm brown in it rather than neutral grey, the tan of crema
+ * on a fresh shot, and foam for text. Energy drinks get the one cold, electric
+ * accent, because that is what a chilled can of the stuff actually looks like
+ * next to a cup of coffee.
+ *
+ * One committed dark look, no theme toggle: this is tapped at the coffee
+ * machine, and a dim kitchen is the common case.
+ */
+@theme {
+  /* Surfaces */
+  --color-roast: #150f0d;
+  --color-grounds: #241a16;
+  --color-grounds-raised: #2f221c;
+
+  /*
+   * Hairlines and borders only — never text. Far below the small-text contrast
+   * minimum, which is the point: it should recede completely.
+   */
+  --color-hairline: #453227;
+
+  /* Text. Every one of these clears 4.5:1 on both --color-roast and
+   * --color-grounds at small sizes. */
+  --color-foam: #f5ede4;
+  --color-oat: #b79e8e;
+  --color-crema: #f0a857;
+  --color-zap: #55e0b8;
+  --color-scald: #ff6b4a;
+
+  /* Dimmed accents, for borders and fills only. */
+  --color-crema-dim: #7a5122;
+  --color-zap-dim: #1c6b58;
+
+  /*
+   * Chart marks are their own steps, not the UI accents.
+   *
+   * The accents above are tuned for text; these are darkened onto the same
+   * hues until they sit inside the OKLCH dark-mode lightness band, then
+   * verified for colourblind separation and 3:1 contrast against
+   * --color-grounds rather than eyeballed.
+   *
+   * chart-primary is deliberately neutral: the line and bar charts plot *all*
+   * caffeine, and painting them crema would imply the coffee category, which
+   * is exactly what crema means in the split below.
+   */
+  --color-chart-primary: #c9b4a4;
+  --color-chart-coffee: #c6812b;
+  --color-chart-energy: #01ab87;
+  --color-chart-grid: #3a2a22;
+
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-body: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-gauge: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-panel: 0.875rem;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-roast);
+  color: var(--color-foam);
+  font-family: var(--font-body);
+  /* Tabular figures everywhere: numbers that change in place must not reflow. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * The display face is Fraunces with its WONK axis on, which is where most of
+ * the personality comes from. Applied through a utility so the variation
+ * settings live in one place.
+ */
+.display {
+  font-family: var(--font-display);
+  font-variation-settings:
+    'SOFT' 60,
+    'WONK' 1;
+}
+
+/*
+ * Etched labels.
+ *
+ * The unit and the period are the two things a reader needs to interpret any
+ * number here, so they are set as instrument legends rather than decorative
+ * eyebrows.
+ */
+.legend {
+  font-family: var(--font-gauge);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-oat);
+}
+
+.panel {
+  background-color: var(--color-grounds);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-panel);
+}
+
+/*
+ * Keycap buttons.
+ *
+ * Logging a drink is the one thing this app exists to do, so the buttons are
+ * built to be hit: a solid bottom edge that compresses under the press, which
+ * gives a physical click on a touchscreen that a flat rectangle does not.
+ */
+.keycap {
+  border-bottom-width: 3px;
+  transition:
+    transform 90ms ease-out,
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+
+.keycap:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+  margin-bottom: 2px;
+}
+
+/*
+ * Chip buttons.
+ *
+ * The secondary actions used to be underlined small caps in the recessive text
+ * colour, which read as footnotes rather than controls. Two of them cannot
+ * afford that: undo has a ten-minute life and you go looking for it in a hurry,
+ * and the party-mode switch is the only way to discover the feature at all.
+ *
+ * The shape is the header nav's pill, so this is a form the app already uses
+ * rather than a new one, with a raised fill so it reads as pressable against
+ * both the panel and the darker footer it sits on.
+ *
+ * In `@layer components` on purpose, unlike `.legend` and `.panel` above:
+ * everything here is a property a caller might want to override with a Tailwind
+ * utility, and unlayered rules beat layered ones however specific the utility
+ * is. The toggle's on-state depends on that working.
+ */
+@layer components {
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--color-grounds-raised);
+    color: var(--color-foam);
+    font-family: var(--font-gauge);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition:
+      border-color 150ms ease-out,
+      background-color 150ms ease-out,
+      color 150ms ease-out;
+  }
+
+  .chip:hover:not(:disabled) {
+    border-color: var(--color-oat);
+  }
+
+  .chip:disabled {
+    opacity: 0.6;
+  }
+}
+
+/*
+ * The jitters.
+ *
+ * Amplitude is set per-render from how close the day's total is to the daily
+ * reference, so the tremor is a reading rather than an ornament: a calm needle
+ * at 50 mg, a visibly nervous one at 400.
+ */
+@keyframes jitter {
+  0%,
+  100% {
+    transform: rotate(calc(var(--jitter, 0deg) * -1));
+  }
+  50% {
+    transform: rotate(var(--jitter, 0deg));
+  }
+}
+
+/* Keyboard focus must stay obvious against the dark roast. */
+:focus-visible {
+  outline: 2px solid var(--color-crema);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
