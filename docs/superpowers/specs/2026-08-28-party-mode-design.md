@@ -21,16 +21,23 @@ In:
 - Log alcoholic drinks in one tap, with a ten-minute undo.
 - A blood alcohol curve for the evening, with a "sober by" reading.
 - A gauge, marked at Norway's 0.2 permille driving limit.
+- An editable list of the evening's logged drinks, for fixing a wrong time or
+  removing a double-tap after the undo window has closed.
+- An alcohol leaderboard on its own page, by day, week and month.
 - Party mode as a per-member setting, off by default.
 - Optional body weight and sex in settings, for a personal Widmark estimate.
 - Team copy changes from "Ovio and Teoria" to "Fleks".
 
 Out, deliberately:
 
-- No alcohol leaderboard, team page or all-time statistics.
+- **No all-time alcohol statistics, anywhere.** Not a preference — a
+  consequence. `daily_totals` exists so that an all-time leaderboard reads one
+  row per person per day instead of every drink ever logged, and party mode has
+  no such rollup. An all-time alcohol query would scan the whole table and get
+  linearly worse forever. Day, week and month are bounded by `local_date` and
+  stay cheap; "all time" is the one period that is not, so it is not offered.
 - No volume picker. Alcohol servings are already standardised; the seeded list
   covers them, and a slider would invite precision the ABV estimate cannot back.
-- No edit-history list for alcohol logs. Undo covers the mistap.
 - Alcohol never enters `drink_logs`, `daily_totals`, rank, streak or any
   existing chart.
 
@@ -114,7 +121,10 @@ and tenths would only push the conversion into every read.
 
 `id`, `user_id`, `drink_type_id`, `alcohol_grams` (real, snapshot),
 `category`, `volume_ml`, `consumed_at`, `created_at`, `local_date`,
-`local_hour`. Indexed on `(user_id, local_date)` and `(user_id, created_at)`.
+`local_hour`. Indexed on `(user_id, local_date)`, `(user_id, created_at)` and
+`local_date` alone — the last one for the leaderboard, which asks about a date
+range across every member and cannot use an index led by `user_id`. Mirrors
+`drink_logs_date_idx`, which exists for the same query.
 
 `alcohol_grams` is a snapshot for the same reason `drink_logs.caffeine_mg` is:
 ABV estimates are editable and a join would rewrite last Friday. `volume_ml`
@@ -127,12 +137,19 @@ Grams are REAL, not rounded integers. At 80 kg and r = 0.615, one gram is about
 0.02 permille — a tenth of the driving limit. Rounding each dose would put
 visible error on the one number the gauge exists to show.
 
-### No rollup
+### No rollup, and therefore no all-time
 
 `daily_totals` exists because all-time leaderboards would otherwise scan every
-drink ever logged. Party mode has no all-time query: the dashboard reads one
-member's last day or two, bounded by `local_date` on the existing index shape.
-A rollup would be four more arithmetic paths to keep in sync for no saving.
+drink ever logged — cheap now, linearly worse forever. Party mode does not get
+one: it would be four more arithmetic paths to keep in step across logging,
+undo, edit and delete, and every party-mode query is bounded by `local_date`
+anyway. The dashboard reads one member's last day or two; the leaderboard reads
+at most a month across the team, which is a few hundred rows.
+
+The price is exact and is paid in the UI rather than hidden: **alcohol has no
+all-time period.** The period tabs on the party page offer day, week and month
+and stop. Offering "all time" without a rollup is the one query that would grow
+without bound, so it is not offered at all rather than offered and slow.
 
 ### `members` additions
 
@@ -160,6 +177,17 @@ Mirrors `server/drinks.ts`, minus the rollup and minus edit/delete:
 - `getUndoableAlcoholDrink(db, { userId, now })`
 - `getUserAlcoholEvents(db, userId, { from, now })` — doses for the curve.
 - `getUserAlcoholToday(db, userId, { now })` — grams and count for the readout.
+- `getUserRecentAlcohol(db, userId, { now })` — the editable list.
+- `updateAlcoholLog(db, { userId, logId, consumedAt })` — time only. There is no
+  volume picker, so there is no volume to correct; changing which drink it was
+  is deleting and re-logging, exactly as `RecentDrinks` argues for caffeine.
+- `deleteAlcoholLog(db, { userId, logId })` — any age, scoped to the caller.
+- `getAlcoholLeaderboard(db, period, now)` — the whole roster ranked by grams,
+  ties sharing a rank, for a `PartyPeriod` that cannot be `all`.
+
+Every one of these is scoped by `userId` as well as by `logId` where a row id
+comes from the client: that scope, not the action, is what stops one member
+reaching another's rows.
 
 `resolveConsumedAt` is reused from `drinks.ts` rather than duplicated.
 
@@ -177,6 +205,19 @@ The caffeine dashboard is untouched. The alcohol section appends after it.
 - `components/charts/BloodAlcoholChart.tsx` — solid to now, dashed ahead.
 - `components/PartyModeToggle.tsx` — a quiet footer button posting to a server
   action.
+- `components/RecentAlcohol.tsx` — the editable list of tonight's drinks.
+  Mirrors `RecentDrinks`, offering an edit of the time and a delete, and nothing
+  else. It spans two local dates rather than one, because an evening does: at
+  00:30 a list bounded to today would be empty while the gauge read 0.8.
+- `app/(app)/party/page.tsx` — the alcohol leaderboard, on its own route rather
+  than as a second section on `/leaderboard`. Two leaderboards on one page would
+  share a `?period=` parameter that one of them cannot take every value of, and
+  disambiguating it costs more than a route does. The nav link appears only for
+  members with party mode on; the page itself redirects them home if it is off,
+  because a URL is not an access grant.
+- `components/PeriodTabs.tsx` grows a `periods` prop so the party page can offer
+  three of the four. `parsePartyPeriod` narrows an untrusted `?period=` to those
+  three, defaulting to today.
 
 The panel carries a flat, unmissable line: this is an estimate from an average
 body and a guessed ABV, it is not a breathalyser, and it is never a reason to
@@ -224,3 +265,8 @@ TDD on the two pure modules, which carry the risk.
 - undo scoped to the caller, and refused past the window.
 - `local_date` and `local_hour` resolved in Oslo, including across a DST edge.
 - alcohol logs leave `drink_logs` and `daily_totals` completely untouched.
+- editing a log's time moves its `local_date` and `local_hour` with it,
+  including across midnight.
+- edit and delete are refused for another member's log id.
+- the leaderboard ranks by grams, shares a rank on a tie, includes members who
+  have drunk nothing, and counts only the period asked for.
