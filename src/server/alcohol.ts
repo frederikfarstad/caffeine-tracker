@@ -5,6 +5,7 @@ import type { TestDb } from '@/db/test-db'
 import { gramsOfAlcohol, type AlcoholCategory } from '@/lib/alcohol'
 import {
   addLocalDays,
+  instantFromLocalTime,
   localBuckets,
   localDateOf,
   periodToDateRange,
@@ -173,35 +174,67 @@ export async function getUndoableAlcoholDrink(
   return { alcoholGrams: last.alcoholGrams, name: last.name, expiresAt }
 }
 
-export type UpdateAlcoholLogResult = { ok: true } | { ok: false; reason: 'not-found' }
+export type UpdateAlcoholLogResult =
+  | { ok: true }
+  | { ok: false; reason: 'not-found' | 'malformed-time' | 'future-time' }
+
+/** `HH:MM` on a 24-hour clock, which is what `input[type=time]` submits. */
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 
 /**
  * Move one of your own drinks to a different time.
  *
- * Only the time. There is no volume picker for alcohol, so there is no volume
- * to correct, and changing which drink it was is a delete and a re-log — the
- * same argument `RecentDrinks` makes for caffeine.
+ * Takes `HH:MM` rather than an instant, and resolves it **against the drink's
+ * own local date** rather than today's. That is the whole reason this does not
+ * reuse `resolveConsumedAt` from `drinks.ts`, which anchors to today because
+ * the caffeine list it serves only ever shows today.
  *
- * Simpler than `updateDrinkLog` in one respect that matters: moving a drink
- * across midnight changes its `localDate`, and with no rollup there is nothing
- * to move between days. The row's own buckets are the whole of the update.
+ * The alcohol list deliberately spans two dates, because an evening does. At
+ * 00:30 it still shows last night's drinks, and anchoring their edits to today
+ * would refuse "22:30" as a time that has not happened yet — for a drink that
+ * demonstrably has. Anchoring to the row keeps a drink on the evening it
+ * belongs to, which is also the least surprising answer.
+ *
+ * Only the time is editable. There is no volume picker for alcohol, so there is
+ * no volume to correct, and changing which drink it was is a delete and a
+ * re-log — the same argument `RecentDrinks` makes for caffeine.
  *
  * Scoped by `userId` as well as `logId`, because the id comes from the client
  * and scope is the only thing stopping it naming somebody else's row.
  */
 export async function updateAlcoholLog(
   db: AnyDb,
-  { userId, logId, consumedAt }: { userId: string; logId: number; consumedAt: Date },
+  {
+    userId,
+    logId,
+    time,
+    now = new Date(),
+  }: { userId: string; logId: number; time: string; now?: Date },
 ): Promise<UpdateAlcoholLogResult> {
-  const { localDate, localHour } = localBuckets(consumedAt)
+  if (!TIME_PATTERN.test(time)) return { ok: false, reason: 'malformed-time' }
 
-  const updated = await db
-    .update(alcoholLogs)
-    .set({ consumedAt, localDate, localHour })
+  const [log] = await db
+    .select({ localDate: alcoholLogs.localDate })
+    .from(alcoholLogs)
     .where(and(eq(alcoholLogs.id, logId), eq(alcoholLogs.userId, userId)))
-    .returning({ id: alcoholLogs.id })
 
-  if (updated.length === 0) return { ok: false, reason: 'not-found' }
+  if (!log) return { ok: false, reason: 'not-found' }
+
+  const consumedAt = instantFromLocalTime(log.localDate, time)
+  // Compared to the minute, since the picker has no seconds: choosing the
+  // current minute must not be a future time just because 40 seconds have run.
+  if (consumedAt.getTime() - now.getTime() > 60_000) {
+    return { ok: false, reason: 'future-time' }
+  }
+
+  // `localDate` cannot change — the time is resolved against it — but the hour
+  // can, so it is recomputed rather than assumed.
+  const { localHour } = localBuckets(consumedAt)
+
+  await db
+    .update(alcoholLogs)
+    .set({ consumedAt, localHour })
+    .where(and(eq(alcoholLogs.id, logId), eq(alcoholLogs.userId, userId)))
 
   return { ok: true }
 }

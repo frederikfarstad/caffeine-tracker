@@ -149,11 +149,7 @@ describe('alcohol never touches the caffeine path', () => {
     await logAlcoholDrink(db, { userId: 'ada', slug: 'wine_glass', now })
     await undoLastAlcoholDrink(db, { userId: 'ada', now })
     if (first.ok) {
-      await updateAlcoholLog(db, {
-        userId: 'ada',
-        logId: first.logId,
-        consumedAt: new Date(now.getTime() - HOUR),
-      })
+      await updateAlcoholLog(db, { userId: 'ada', logId: first.logId, time: '19:00', now })
       await deleteAlcoholLog(db, { userId: 'ada', logId: first.logId })
     }
 
@@ -232,44 +228,72 @@ describe('getUndoableAlcoholDrink', () => {
 })
 
 describe('updateAlcoholLog', () => {
-  it('moves the drink and its local buckets with it', async () => {
+  it('moves the drink and recomputes its local hour', async () => {
     const logged = await logAlcoholDrink(db, { userId: 'ada', slug: 'beer_pint', now })
     if (!logged.ok) throw new Error('setup failed')
 
-    // 19:00 Oslo.
-    const earlier = new Date('2026-08-28T17:00:00Z')
-    expect(await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, consumedAt: earlier })).toEqual(
-      { ok: true },
-    )
+    expect(
+      await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, time: '19:00', now }),
+    ).toEqual({ ok: true })
 
     const [log] = await db.select().from(alcoholLogs)
-    expect(log.consumedAt).toEqual(earlier)
+    // 19:00 Oslo on the drink's own date, which is 17:00 UTC in summer.
+    expect(log.consumedAt).toEqual(new Date('2026-08-28T17:00:00Z'))
     expect(log.localHour).toBe(19)
     expect(log.localDate).toBe('2026-08-28')
   })
 
-  it('carries a drink across midnight onto the next local date', async () => {
+  /*
+   * The case the whole `time`-not-`Date` signature exists for. At 00:30 the
+   * list still shows last night's drinks; anchoring their edits to today would
+   * refuse 22:30 as a time that has not happened yet.
+   */
+  it('resolves the time against the drink own date, not today', async () => {
+    // 23:00 Oslo on the 28th.
+    const lastNight = new Date('2026-08-28T21:00:00Z')
+    const logged = await logAlcoholDrink(db, { userId: 'ada', slug: 'beer_pint', now: lastNight })
+    if (!logged.ok) throw new Error('setup failed')
+
+    // It is now 00:30 Oslo on the 29th, and the drink is being corrected.
+    const afterMidnight = new Date('2026-08-28T22:30:00Z')
+    expect(
+      await updateAlcoholLog(db, {
+        userId: 'ada',
+        logId: logged.logId,
+        time: '22:30',
+        now: afterMidnight,
+      }),
+    ).toEqual({ ok: true })
+
+    const [log] = await db.select().from(alcoholLogs)
+    expect(log.localDate).toBe('2026-08-28')
+    expect(log.localHour).toBe(22)
+    expect(log.consumedAt).toEqual(new Date('2026-08-28T20:30:00Z'))
+  })
+
+  it('refuses a time later today', async () => {
     const logged = await logAlcoholDrink(db, { userId: 'ada', slug: 'beer_pint', now })
     if (!logged.ok) throw new Error('setup failed')
 
-    // 00:30 Oslo the following day.
-    const afterMidnight = new Date('2026-08-28T22:30:00Z')
-    await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, consumedAt: afterMidnight })
+    expect(
+      await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, time: '23:59', now }),
+    ).toEqual({ ok: false, reason: 'future-time' })
+  })
 
-    const [log] = await db.select().from(alcoholLogs)
-    expect(log.localDate).toBe('2026-08-29')
-    expect(log.localHour).toBe(0)
+  it('refuses a malformed time', async () => {
+    const logged = await logAlcoholDrink(db, { userId: 'ada', slug: 'beer_pint', now })
+    if (!logged.ok) throw new Error('setup failed')
+
+    expect(
+      await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, time: '25:00', now }),
+    ).toEqual({ ok: false, reason: 'malformed-time' })
   })
 
   it('leaves the grams alone — an edit moves a drink, it does not repour it', async () => {
     const logged = await logAlcoholDrink(db, { userId: 'ada', slug: 'beer_pint', now })
     if (!logged.ok) throw new Error('setup failed')
 
-    await updateAlcoholLog(db, {
-      userId: 'ada',
-      logId: logged.logId,
-      consumedAt: new Date(now.getTime() - HOUR),
-    })
+    await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, time: '20:00', now })
 
     const [log] = await db.select().from(alcoholLogs)
     expect(log.alcoholGrams).toBeCloseTo(18.54, 2)
@@ -280,11 +304,7 @@ describe('updateAlcoholLog', () => {
     if (!logged.ok) throw new Error('setup failed')
 
     expect(
-      await updateAlcoholLog(db, {
-        userId: 'ada',
-        logId: logged.logId,
-        consumedAt: new Date(now.getTime() - HOUR),
-      }),
+      await updateAlcoholLog(db, { userId: 'ada', logId: logged.logId, time: '19:00', now }),
     ).toEqual({ ok: false, reason: 'not-found' })
 
     const [log] = await db.select().from(alcoholLogs)
@@ -292,7 +312,7 @@ describe('updateAlcoholLog', () => {
   })
 
   it('reports a missing log rather than silently doing nothing', async () => {
-    expect(await updateAlcoholLog(db, { userId: 'ada', logId: 9999, consumedAt: now })).toEqual({
+    expect(await updateAlcoholLog(db, { userId: 'ada', logId: 9999, time: '19:00', now })).toEqual({
       ok: false,
       reason: 'not-found',
     })

@@ -336,14 +336,17 @@ const editAlcoholSchema = z.object({
 /**
  * Move one of the member's own alcohol logs to a different time.
  *
- * The log id comes from the client, so `updateAlcoholLog` scopes its query by
+ * The time is passed through as `HH:MM` rather than resolved here, which is the
+ * opposite of `updateDrinkLogAction`. `updateAlcoholLog` anchors it to the
+ * drink's own local date, and only the row knows what that is: the alcohol list
+ * spans two dates so that an evening survives midnight, and `resolveConsumedAt`
+ * would anchor last night's 22:30 to today and refuse it as still to come.
+ *
+ * The log id comes from the client, so `updateAlcoholLog` scopes its queries by
  * user as well — that scope, not this action, is what stops one member reaching
  * another's rows.
  */
-export async function updateAlcoholLogAction(
-  logId: number,
-  time: string,
-): Promise<ActionResult> {
+export async function updateAlcoholLogAction(logId: number, time: string): Promise<ActionResult> {
   const member = await requireMember()
 
   const parsed = editAlcoholSchema.safeParse({ logId, time })
@@ -351,25 +354,21 @@ export async function updateAlcoholLogAction(
     return { ok: false, message: "That edit doesn't look right." }
   }
 
-  const when = resolveConsumedAt({ time: parsed.data.time })
-  if (!when.ok) {
-    return {
-      ok: false,
-      message:
-        when.reason === 'future-time'
-          ? "That time hasn't happened yet."
-          : 'Use a time like 21:15.',
-    }
-  }
-
   const result = await updateAlcoholLog(db, {
     userId: member.userId,
     logId: parsed.data.logId,
-    consumedAt: when.consumedAt,
+    time: parsed.data.time,
   })
 
   if (!result.ok) {
-    return { ok: false, message: "That drink isn't there any more." }
+    return {
+      ok: false,
+      message: {
+        'not-found': "That drink isn't there any more.",
+        'malformed-time': 'Use a time like 21:15.',
+        'future-time': "That time hasn't happened yet.",
+      }[result.reason],
+    }
   }
 
   refresh()
