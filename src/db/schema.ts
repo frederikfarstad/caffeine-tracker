@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm'
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import type { AlcoholCategory } from '@/lib/alcohol'
 import type { DrinkCategory } from '@/lib/caffeine'
 
 /* -------------------------------------------------------------------------- */
@@ -103,6 +104,34 @@ export const members = sqliteTable('members', {
    * follow the account across devices instead of firing once per browser.
    */
   lastSeenPatchNote: text('last_seen_patch_note'),
+
+  /* ---------------------------------------------------------------------- */
+  /* Party mode. All optional, all off or absent by default, so an untouched */
+  /* account behaves exactly as it did before the feature existed.           */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Whether this member has switched party mode on.
+   *
+   * A column rather than a URL parameter or localStorage: the toggle has to
+   * survive `LiveRefresh`, a nav click and a second device, and a
+   * server-rendered section that appears only after hydration flashes.
+   */
+  partyMode: integer('party_mode', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Body weight in kilograms, or null.
+   *
+   * Optional, unlike the caffeine settings, because the alcohol model has a
+   * defensible population fallback — and requiring a weight in order to use the
+   * feature at all would be a poor trade. See `lib/blood-alcohol.ts`.
+   */
+  bodyWeightKg: integer('body_weight_kg'),
+  /**
+   * Used for exactly one thing: choosing Widmark's distribution ratio, which
+   * differs because the fraction of the body that is water does. Nothing else
+   * reads it, and it is never displayed.
+   */
+  sex: text('sex').$type<'male' | 'female'>(),
 })
 
 /**
@@ -214,6 +243,93 @@ export const dailyTotals = sqliteTable(
 )
 
 /* -------------------------------------------------------------------------- */
+/* Party mode                                                                 */
+/*                                                                            */
+/* Alcohol is a parallel path, not a category of drink. Sharing `drink_logs`   */
+/* would put a beer into every caffeine statistic in `stats.ts` — the drink    */
+/* count, the rank, the streak, the category split — as a zero-milligram row.  */
+/* Two tables that never meet is the cheaper honesty.                          */
+/*                                                                            */
+/* There is deliberately no `daily_totals` equivalent. That rollup exists      */
+/* because all-time leaderboards would otherwise scan every drink ever logged; */
+/* party mode answers that by not offering an all-time period at all. Every    */
+/* query it does make is bounded by `local_date` — one member's evening, or at */
+/* most a month across the team — which the indexes below already serve.       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The alcoholic drinks that can be logged.
+ *
+ * Volume and ABV are both required, unlike `drinkTypes.volumeMl`. Grams of
+ * alcohol is volume times strength times density, so a type missing either
+ * cannot produce a dose at all — where a coffee's caffeine is simply a number
+ * somebody typed.
+ */
+export const alcoholDrinkTypes = sqliteTable('alcohol_drink_types', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  category: text('category').$type<AlcoholCategory>().notNull(),
+  volumeMl: integer('volume_ml').notNull(),
+  /**
+   * Percent alcohol by volume, as printed on the label.
+   *
+   * REAL rather than the integer-of-tenths trick used for
+   * `elimination_half_life_minutes`. That one exists so a form can accept 5.5
+   * while the column stays whole; here 4.7 simply *is* an ABV, and tenths would
+   * push a conversion into every read for nothing.
+   */
+  abvPercent: real('abv_percent').notNull(),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  /** Null for the seeded types and for anyone since deleted. */
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+})
+
+/**
+ * One row per alcoholic drink consumed.
+ *
+ * `alcoholGrams` is a snapshot of what the type worked out to at the moment of
+ * logging, for the same reason as `drinkLogs.caffeineMg`: ABV figures are
+ * estimates and editable, and a join would rewrite last Friday.
+ *
+ * REAL, not a rounded integer. At an average body one gram is about 0.02 ‰ — a
+ * tenth of the legal limit — so rounding each dose would put visible error on
+ * the one number the gauge exists to show.
+ */
+export const alcoholLogs = sqliteTable(
+  'alcohol_logs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    drinkTypeId: integer('drink_type_id')
+      .notNull()
+      .references(() => alcoholDrinkTypes.id),
+    alcoholGrams: real('alcohol_grams').notNull(),
+    category: text('category').$type<AlcoholCategory>().notNull(),
+    /** The serving, snapshotted so a past evening explains itself without a join. */
+    volumeMl: integer('volume_ml').notNull(),
+    consumedAt: integer('consumed_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * When the row was written, which is not when the drink was drunk. The undo
+     * window measures from here, so backdating cannot hide a fresh mistap.
+     */
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    localDate: text('local_date').notNull(),
+    localHour: integer('local_hour').notNull(),
+  },
+  (table) => [
+    index('alcohol_logs_user_date_idx').on(table.userId, table.localDate),
+    // The leaderboard asks about a date range across every member, so it cannot
+    // use an index led by `user_id`. Mirrors `drink_logs_date_idx`.
+    index('alcohol_logs_date_idx').on(table.localDate),
+    index('alcohol_logs_user_recent_idx').on(table.userId, table.createdAt),
+  ],
+)
+
+/* -------------------------------------------------------------------------- */
 /* Relations                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -231,6 +347,14 @@ export const drinkLogsRelations = relations(drinkLogs, ({ one }) => ({
   drinkType: one(drinkTypes, {
     fields: [drinkLogs.drinkTypeId],
     references: [drinkTypes.id],
+  }),
+}))
+
+export const alcoholLogsRelations = relations(alcoholLogs, ({ one }) => ({
+  user: one(users, { fields: [alcoholLogs.userId], references: [users.id] }),
+  drinkType: one(alcoholDrinkTypes, {
+    fields: [alcoholLogs.drinkTypeId],
+    references: [alcoholDrinkTypes.id],
   }),
 }))
 

@@ -43,6 +43,13 @@
       "when": 1787831413879,
       "tag": "0005_drink_provenance_and_volume",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787905974426,
+      "tag": "0006_party_mode",
+      "breakpoints": true
     }
   ]
 }
