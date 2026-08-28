@@ -91,9 +91,10 @@ Free, no billing account, and no app-review process — you're only requesting
 > name, support email, homepage url, and privacy policy url are required for
 > switching the app to external production mode"* with no way forward.
 
-> **Coworkers use personal Google accounts.** Nothing here touches Bekk's
-> Microsoft tenant, so no IT ticket and no admin consent. Access is controlled
-> by the team code instead, not by email domain.
+> **Everyone signs in with a personal Google account.** Nothing here touches a
+> corporate identity provider, so there is no IT ticket to raise and no admin
+> consent to wait for. Access is controlled by the team code, not by email
+> domain.
 
 > **Preview deploys won't sign in.** Vercel gives each preview a new URL, and
 > Google only accepts redirect URIs registered in advance. Test auth on
@@ -221,5 +222,5 @@ going quiet, not a surprise bill.
 
 **One licensing note.** Vercel's Hobby plan is for personal, non-commercial use.
 A free internal tracker with no ads or payments sits within the spirit of that,
-but if Fleks treats this as a company tool, the honest answer is Pro at
+but if your team treats this as a company tool, the honest answer is Pro at
 $20/month.

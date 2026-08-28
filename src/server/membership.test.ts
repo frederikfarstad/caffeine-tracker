@@ -12,30 +12,34 @@ import {
   joinTeam,
 } from './membership'
 
+// The fixture is deliberately nonsense. A real join code in the test suite is a
+// real join code in the repository, and this one grants access to everything.
+const FIXTURE_CODE = 'decaf-nonsense'
+
 describe('codesMatch', () => {
   it('accepts the exact code', () => {
-    expect(codesMatch('espresso-yourself', 'espresso-yourself')).toBe(true)
+    expect(codesMatch(FIXTURE_CODE, FIXTURE_CODE)).toBe(true)
   })
 
   it('ignores surrounding whitespace, which pasting tends to add', () => {
-    expect(codesMatch('  espresso-yourself \n', 'espresso-yourself')).toBe(true)
+    expect(codesMatch(`  ${FIXTURE_CODE} \n`, FIXTURE_CODE)).toBe(true)
   })
 
   it('is case sensitive', () => {
-    expect(codesMatch('Espresso-Yourself', 'espresso-yourself')).toBe(false)
+    expect(codesMatch('Decaf-Nonsense', FIXTURE_CODE)).toBe(false)
   })
 
   it('rejects a wrong code', () => {
-    expect(codesMatch('latte-yourself', 'espresso-yourself')).toBe(false)
+    expect(codesMatch('latte-nonsense', FIXTURE_CODE)).toBe(false)
   })
 
   it('rejects a code that is merely a prefix', () => {
-    expect(codesMatch('espresso', 'espresso-yourself')).toBe(false)
+    expect(codesMatch('decaf', FIXTURE_CODE)).toBe(false)
   })
 
   it('rejects empty input', () => {
-    expect(codesMatch('', 'espresso-yourself')).toBe(false)
-    expect(codesMatch('   ', 'espresso-yourself')).toBe(false)
+    expect(codesMatch('', FIXTURE_CODE)).toBe(false)
+    expect(codesMatch('   ', FIXTURE_CODE)).toBe(false)
   })
 
   // A misconfigured deployment must fail closed rather than admit everyone.
@@ -71,7 +75,7 @@ describe('isAdminEmail', () => {
 })
 
 describe('joinTeam', () => {
-  const CODE = 'espresso-yourself'
+  const CODE = FIXTURE_CODE
   const now = new Date('2026-08-26T10:00:00Z')
   let db: TestDb
 
