@@ -3,6 +3,7 @@ import { BloodAlcoholChart } from '@/components/charts/BloodAlcoholChart'
 import { BloodCaffeineChart } from '@/components/charts/BloodCaffeineChart'
 import { ConsumptionChart } from '@/components/charts/ConsumptionChart'
 import { ChartFrame } from '@/components/charts/ChartFrame'
+import { BadgeList } from '@/components/BadgeList'
 import { LogDrinkPanel } from '@/components/LogDrinkPanel'
 import { PartyModeToggle } from '@/components/PartyModeToggle'
 import { PartyPanel } from '@/components/PartyPanel'
@@ -28,7 +29,7 @@ import {
   drivingOutlook,
 } from '@/lib/blood-alcohol'
 import { isPartyTime } from '@/lib/party-time'
-import { nextLocalTimeAfter } from '@/lib/time'
+import { localDateOf, nextLocalTimeAfter } from '@/lib/time'
 import { requireMember } from '@/server/auth'
 import {
   getUndoableAlcoholDrink,
@@ -37,6 +38,7 @@ import {
   getUserRecentAlcohol,
   listActiveAlcoholTypes,
 } from '@/server/alcohol'
+import { buildContext, getBadgesFor } from '@/server/badges'
 import { getUndoableDrink, getUserRecentDrinks, listActiveDrinkTypes } from '@/server/drinks'
 import {
   getUserFavouriteDrinkTypes,
@@ -183,6 +185,8 @@ export default async function PersonalDashboard({
     alcoholToday,
     alcoholEvents,
     recentAlcohol,
+    badges,
+    badgeContext,
   ] = await Promise.all([
     listActiveDrinkTypes(db),
     getUserFavouriteDrinkTypes(db, member.userId, { limit: 4, now }),
@@ -202,6 +206,16 @@ export default async function PersonalDashboard({
       ? getUserAlcoholEvents(db, member.userId, { from: alcoholLookback, now })
       : Promise.resolve([]),
     party ? getUserRecentAlcohol(db, member.userId, { now }) : Promise.resolve([]),
+    getBadgesFor(db, member.userId),
+    /*
+     * `localHour: null` because nothing is being logged here. The hour badges
+     * must not fire merely because somebody opened the dashboard before seven.
+     */
+    buildContext(db, member.userId, {
+      today: localDateOf(now),
+      localHour: null,
+      needDistinctTypes: true,
+    }),
   ])
 
   const hasHistory = series.some((point) => point.mg > 0)
@@ -342,6 +356,8 @@ export default async function PersonalDashboard({
           Nothing logged {PERIOD_TITLES[period]}. Tap a drink above the moment you pour one.
         </p>
       )}
+
+      <BadgeList earned={badges.map((badge) => badge.badgeId)} context={badgeContext} />
     </>
   )
 

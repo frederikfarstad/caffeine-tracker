@@ -1,5 +1,7 @@
 import Image from 'next/image'
+import { BadgeRow } from '@/components/BadgeList'
 import { DAILY_MAX_MG, formatMg, limitStatus } from '@/lib/caffeine'
+import type { EarnedBadge } from '@/server/badges'
 import type { LeaderboardRow } from '@/server/stats'
 
 /**
@@ -15,10 +17,13 @@ import type { LeaderboardRow } from '@/server/stats'
  */
 export function LeaderboardTable({
   rows,
+  badges,
   highlightUserId,
   showDailyReference,
 }: {
   rows: LeaderboardRow[]
+  /** Earned badges by member id. Missing and empty mean the same thing here. */
+  badges: Map<string, EarnedBadge[]>
   highlightUserId: string
   showDailyReference: boolean
 }) {
@@ -76,6 +81,17 @@ export function LeaderboardTable({
                     {row.displayName}
                     {isMe && <span className="text-oat"> · you</span>}
                   </span>
+                  {/*
+                   * Inside the name cell rather than in a column of their own,
+                   * so the table still fits a phone. Oldest first: the ones you
+                   * earned early say more about you than this morning's.
+                   */}
+                  <BadgeRow
+                    badgeIds={(badges.get(row.userId) ?? [])
+                      .slice()
+                      .sort((a, b) => a.earnedAt.getTime() - b.earnedAt.getTime())
+                      .map((badge) => badge.badgeId)}
+                  />
                   {overReference && (
                     <span className="shrink-0 rounded border border-scald/50 px-1.5 py-0.5 font-gauge text-[0.5625rem] tracking-[0.08em] text-scald uppercase">
                       Past {DAILY_MAX_MG} mg
