@@ -5,6 +5,7 @@ import Google from 'next-auth/providers/google'
 import { redirect } from 'next/navigation'
 import { db } from '@/db'
 import { accounts, members, sessions, users, verificationTokens } from '@/db/schema'
+import type { Profile } from '@/lib/blood-caffeine'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
@@ -60,6 +61,37 @@ export type Member = {
   isAdmin: boolean
   image: string | null
   email: string | null
+  /** How this person's own physiology is modelled. */
+  profile: Profile
+  /** `HH:MM` in Oslo. */
+  bedtimeLocal: string
+  lastSeenPatchNote: string | null
+}
+
+/**
+ * Build a `Member` from the row and the session user.
+ *
+ * Extracted because `currentMember` and `requireMember` differ only in what
+ * they do when there is no row, and settings arriving here meant the narrowing
+ * was about to be duplicated twice over.
+ */
+function toMember(
+  row: typeof members.$inferSelect,
+  user: Pick<SignedInUser, 'image' | 'email'>,
+): Member {
+  return {
+    userId: row.userId,
+    displayName: row.displayName,
+    isAdmin: row.isAdmin,
+    image: user.image,
+    email: user.email,
+    profile: {
+      eliminationHalfLifeMs: row.eliminationHalfLifeMinutes * 60_000,
+      sleepThresholdMg: row.sleepThresholdMg,
+    },
+    bedtimeLocal: row.bedtimeLocal,
+    lastSeenPatchNote: row.lastSeenPatchNote,
+  }
 }
 
 /**
@@ -67,7 +99,8 @@ export type Member = {
  *
  * Membership is read fresh rather than cached in the JWT so that removing
  * someone takes effect immediately instead of whenever their token expires.
- * That costs one indexed row read per request.
+ * That costs one indexed row read per request — and since the whole row comes
+ * back anyway, the member's personal settings ride along for free.
  */
 export async function currentMember(): Promise<Member | null> {
   const user = await currentUser()
@@ -76,13 +109,7 @@ export async function currentMember(): Promise<Member | null> {
   const [member] = await db.select().from(members).where(eq(members.userId, user.id))
   if (!member) return null
 
-  return {
-    userId: member.userId,
-    displayName: member.displayName,
-    isAdmin: member.isAdmin,
-    image: user.image,
-    email: user.email,
-  }
+  return toMember(member, user)
 }
 
 /**
@@ -97,13 +124,7 @@ export async function requireMember(): Promise<Member> {
   const [member] = await db.select().from(members).where(eq(members.userId, user.id))
   if (!member) redirect('/join')
 
-  return {
-    userId: member.userId,
-    displayName: member.displayName,
-    isAdmin: member.isAdmin,
-    image: user.image,
-    email: user.email,
-  }
+  return toMember(member, user)
 }
 
 export async function requireAdmin(): Promise<Member> {

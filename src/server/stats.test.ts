@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from '@/db/test-db'
 import { members, users } from '@/db/schema'
@@ -10,6 +11,8 @@ import {
   getTeamSplit,
   getTeamTimeSeries,
   getUserStreak,
+  getTeamIntakeEvents,
+  getUserFavouriteDrinkTypes,
   getUserIntakeEvents,
   getUserSummary,
   getUserTimeSeries,
@@ -360,5 +363,135 @@ describe('getUserIntakeEvents', () => {
       oslo('2026-08-26', 7),
       oslo('2026-08-26', 13),
     ])
+  })
+})
+
+describe('getUserFavouriteDrinkTypes', () => {
+  // Ada's month, from the fixtures: 3 coffees, 1 energy_050.
+  it('ranks a member’s own drinks by how often they log them', async () => {
+    const favourites = await getUserFavouriteDrinkTypes(db, 'ada', { limit: 2, now: NOW })
+    expect(favourites.map((type) => type.slug)).toEqual(['coffee', 'energy_050'])
+  })
+
+  it('pads with the catalogue so the row is never short', async () => {
+    const favourites = await getUserFavouriteDrinkTypes(db, 'ada', { limit: 4, now: NOW })
+
+    expect(favourites).toHaveLength(4)
+    expect(new Set(favourites.map((type) => type.slug)).size).toBe(4)
+  })
+
+  // A new colleague has no history at all and still needs a full row of
+  // buttons, in the catalogue's own display order.
+  it('falls back to display order for someone who has logged nothing', async () => {
+    const favourites = await getUserFavouriteDrinkTypes(db, 'bo', { limit: 4, now: NOW })
+    expect(favourites.map((type) => type.slug)).toEqual([
+      'coffee',
+      'espresso',
+      'energy_033',
+      'energy_050',
+    ])
+  })
+
+  it('respects the limit', async () => {
+    const favourites = await getUserFavouriteDrinkTypes(db, 'ada', { limit: 1, now: NOW })
+    expect(favourites).toHaveLength(1)
+    expect(favourites[0].slug).toBe('coffee')
+  })
+
+  it('never counts another member’s drinks', async () => {
+    // Over a month Linn's three energy drinks outrank everything; Ada's coffees
+    // are hers alone. The two members must not see the same row.
+    const [linn] = await getUserFavouriteDrinkTypes(db, 'linn', { limit: 1, now: NOW })
+    const [ada] = await getUserFavouriteDrinkTypes(db, 'ada', { limit: 1, now: NOW })
+
+    expect(linn.slug).toBe('energy_050')
+    expect(ada.slug).toBe('coffee')
+  })
+
+  it('leaves out deactivated drinks', async () => {
+    await db.update(drinkTypes).set({ isActive: false }).where(eq(drinkTypes.slug, 'coffee'))
+
+    const favourites = await getUserFavouriteDrinkTypes(db, 'ada', { limit: 4, now: NOW })
+    expect(favourites.map((type) => type.slug)).not.toContain('coffee')
+  })
+
+  it('carries everything the log buttons need', async () => {
+    const [first] = await getUserFavouriteDrinkTypes(db, 'ada', { limit: 1, now: NOW })
+    expect(first).toMatchObject({
+      slug: 'coffee',
+      name: 'Coffee',
+      category: 'coffee',
+      caffeineMg: 95,
+    })
+    expect(first).toHaveProperty('volumeMl')
+    expect(first).toHaveProperty('id')
+  })
+
+  // Bounded to a month so the scan stays small; a drink from long ago should
+  // not outrank this week's habit.
+  it('ignores drinks older than the recent window', async () => {
+    // Linn's three energy drinks are on 2026-08-05, three weeks before NOW, so
+    // a seven-day window must not let them top the row.
+    const month = await getUserFavouriteDrinkTypes(db, 'linn', { limit: 1, now: NOW })
+    const week = await getUserFavouriteDrinkTypes(db, 'linn', { limit: 1, now: NOW, days: 7 })
+
+    expect(month[0].slug).toBe('energy_050')
+    expect(week[0].slug).not.toBe('energy_050')
+  })
+})
+
+describe('getTeamIntakeEvents', () => {
+  const twelveHoursBack = new Date(NOW.getTime() - 12 * 60 * 60 * 1000)
+
+  it('returns everyone’s drinks in the window, grouped by member', async () => {
+    const groups = await getTeamIntakeEvents(db, { from: twelveHoursBack, now: NOW })
+    const byUser = Object.fromEntries(groups.map((g) => [g.userId, g.doses.length]))
+
+    // Ada: coffee 10:00 + energy 14:00. Linn: espresso 09:00. Bo: nothing.
+    expect(byUser).toEqual({ ada: 2, linn: 1 })
+  })
+
+  it('carries each member’s own clearance profile', async () => {
+    await db
+      .update(members)
+      .set({ eliminationHalfLifeMinutes: 150, sleepThresholdMg: 25 })
+      .where(eq(members.userId, 'ada'))
+
+    const groups = await getTeamIntakeEvents(db, { from: twelveHoursBack, now: NOW })
+    const ada = groups.find((group) => group.userId === 'ada')!
+    const linn = groups.find((group) => group.userId === 'linn')!
+
+    expect(ada.profile.eliminationHalfLifeMs).toBe(150 * 60_000)
+    // Untouched members stay on the population default.
+    expect(linn.profile.eliminationHalfLifeMs).toBe(300 * 60_000)
+  })
+
+  it('leaves out members with nothing in the window', async () => {
+    const groups = await getTeamIntakeEvents(db, { from: twelveHoursBack, now: NOW })
+    expect(groups.map((group) => group.userId)).not.toContain('bo')
+  })
+
+  it('excludes drinks older than the window', async () => {
+    const groups = await getTeamIntakeEvents(db, { from: twelveHoursBack, now: NOW })
+    const all = groups.flatMap((group) => group.doses.map((dose) => dose.consumedAt))
+
+    expect(all.every((at) => at.getTime() >= twelveHoursBack.getTime())).toBe(true)
+  })
+
+  it('is empty when nobody has had anything', async () => {
+    const future = new Date(NOW.getTime() + 60 * 60 * 1000)
+    expect(await getTeamIntakeEvents(db, { from: future, now: future })).toEqual([])
+  })
+
+  it('reaches across the local date boundary like the personal one', async () => {
+    const morning = oslo('2026-08-26', 8)
+    await logDrink(db, { userId: 'bo', slug: 'coffee', now: oslo('2026-08-25', 23) })
+
+    const groups = await getTeamIntakeEvents(db, {
+      from: new Date(morning.getTime() - 12 * 60 * 60 * 1000),
+      now: morning,
+    })
+
+    expect(groups.map((group) => group.userId)).toContain('bo')
   })
 })

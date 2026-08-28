@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { Db } from '@/db'
 import { joinAttempts, members, users } from '@/db/schema'
+import { LATEST_PATCH_NOTE } from '@/lib/patch-notes'
 import type { TestDb } from '@/db/test-db'
 
 type AnyDb = Db | TestDb
@@ -103,6 +104,9 @@ export async function joinTeam(db: AnyDb, options: JoinOptions): Promise<JoinRes
     displayName: displayNameFor(user?.name ?? null, user?.email ?? null),
     isAdmin: isAdminEmail(user?.email ?? null, adminEmails),
     joinedAt: now,
+    // Caught up on arrival. Greeting a new colleague with a changelog for an
+    // app they have never used would be a strange first screen.
+    lastSeenPatchNote: LATEST_PATCH_NOTE,
   })
 
   await db.delete(joinAttempts).where(eq(joinAttempts.userId, userId))

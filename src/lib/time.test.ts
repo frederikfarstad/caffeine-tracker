@@ -6,6 +6,7 @@ import {
   enumerateLocalDates,
   instantFromLocalTime,
   localBuckets,
+  nextLocalTimeAfter,
   localDateOf,
   periodToDateRange,
   weekdayOf,
@@ -317,5 +318,43 @@ describe('instantFromLocalTime', () => {
         new Date('2026-10-25T11:00:00Z'),
       )
     })
+  })
+})
+
+describe('nextLocalTimeAfter', () => {
+  // 10:00 Oslo on a Wednesday in summer.
+  const morning = new Date('2026-08-26T08:00:00Z')
+
+  it('is later the same day when the time has not come round yet', () => {
+    expect(nextLocalTimeAfter('23:00', morning)).toEqual(instantFromLocalTime('2026-08-26', '23:00'))
+  })
+
+  it('rolls to tomorrow when the time has already passed today', () => {
+    expect(nextLocalTimeAfter('07:00', morning)).toEqual(instantFromLocalTime('2026-08-27', '07:00'))
+  })
+
+  // A bedtime after midnight belongs to the night that is still coming, not to
+  // the one that already happened.
+  it('treats an after-midnight time as tomorrow', () => {
+    expect(nextLocalTimeAfter('01:30', morning)).toEqual(instantFromLocalTime('2026-08-27', '01:30'))
+  })
+
+  it('rolls forward when the time is exactly now', () => {
+    expect(nextLocalTimeAfter('10:00', morning)).toEqual(instantFromLocalTime('2026-08-27', '10:00'))
+  })
+
+  it('is always in the future', () => {
+    for (const time of ['00:00', '06:30', '10:00', '12:00', '23:59']) {
+      expect(nextLocalTimeAfter(time, morning).getTime()).toBeGreaterThan(morning.getTime())
+    }
+  })
+
+  // The clock goes forward at 02:00 on 2026-03-29, so a 23:00 bedtime the night
+  // before is still an ordinary 23:00 — the shift lands after it.
+  it('handles a bedtime on the night the clocks change', () => {
+    const saturdayEvening = new Date('2026-03-28T20:00:00Z') // 21:00 CET
+    expect(nextLocalTimeAfter('23:00', saturdayEvening)).toEqual(
+      instantFromLocalTime('2026-03-28', '23:00'),
+    )
   })
 })

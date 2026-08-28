@@ -29,6 +29,20 @@
       "when": 1787746758868,
       "tag": "0003_add_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787830281341,
+      "tag": "0004_member_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787831413879,
+      "tag": "0005_drink_provenance_and_volume",
+      "breakpoints": true
     }
   ]
 }

@@ -117,6 +117,21 @@ export function instantFromLocalTime(date: LocalDate, time: string): Date {
   return new Date(instant)
 }
 
+/**
+ * The next moment Oslo's wall clock will read a given `HH:MM`.
+ *
+ * Today's occurrence if it is still to come, tomorrow's otherwise. Needed
+ * because a bedtime is a time of day rather than an instant, and "how late can
+ * I have a coffee" has to be asked about the night that is coming — including
+ * for the people whose bedtime is 01:30, which is always tomorrow.
+ */
+export function nextLocalTimeAfter(time: string, now: Date): Date {
+  const today = instantFromLocalTime(localDateOf(now), time)
+  if (today.getTime() > now.getTime()) return today
+
+  return instantFromLocalTime(addLocalDays(localDateOf(now), 1), time)
+}
+
 /** The calendar date an instant falls on in Oslo. */
 export function localDateOf(instant: Date): LocalDate {
   return localBuckets(instant).localDate

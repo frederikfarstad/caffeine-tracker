@@ -3,6 +3,8 @@
 import { useOptimistic, useState, useTransition } from 'react'
 import { logDrinkAction, undoLastDrinkAction } from '@/app/(app)/actions'
 import { BuzzMeter } from '@/components/BuzzMeter'
+import { DrinkSheet } from '@/components/DrinkSheet'
+import { VolumePicker } from '@/components/VolumePicker'
 import { DAILY_MAX_MG, formatMg, limitHeadline, limitStatus } from '@/lib/caffeine'
 import type { ActiveDrinkType } from '@/server/drinks'
 import type { UndoableDrink } from '@/server/drinks'
@@ -38,10 +40,14 @@ const HEADLINE_TONE = {
  */
 export function LogDrinkPanel({
   todayMg,
+  favourites,
   drinkTypes,
   undoable,
 }: {
   todayMg: number
+  /** The member's own most-logged drinks: the one-tap row. */
+  favourites: ActiveDrinkType[]
+  /** The whole catalogue, for the search sheet. */
   drinkTypes: ActiveDrinkType[]
   undoable: UndoableDrink | null
 }) {
@@ -63,6 +69,11 @@ export function LogDrinkPanel({
       // that's left is to say what went wrong.
       if (!result.ok) setError(result.message)
     })
+  }
+
+  /** Log the standard serving of a drink. */
+  function log(type: ActiveDrinkType) {
+    run(type.caffeineMg, () => logDrinkAction(type.slug, earlierTime ?? undefined))
   }
 
   const status = limitStatus(optimisticMg)
@@ -109,26 +120,61 @@ export function LogDrinkPanel({
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          {drinkTypes.map((type) => (
-            <button
+          {favourites.map((type) => (
+            <div
               key={type.slug}
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                run(type.caffeineMg, () => logDrinkAction(type.slug, earlierTime ?? undefined))
-              }
-              className={`keycap flex min-h-13 flex-1 basis-[calc(50%-0.25rem)] items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-left disabled:opacity-60 sm:basis-auto ${
-                type.category === 'energy'
-                  ? 'border-zap-dim bg-zap/10 hover:border-zap hover:bg-zap/15'
-                  : 'border-crema-dim bg-crema/10 hover:border-crema hover:bg-crema/15'
+              /*
+               * One per row on a phone, two from `sm`. Two-up at 375px left
+               * about 150px for the name, which truncated "Energy 0.33L" and
+               * "Energy 0.5L" to the same "Energy 0…" — the buttons became
+               * indistinguishable on the device the app is mostly used on.
+               */
+              className={`flex min-h-13 basis-full items-stretch gap-px overflow-hidden rounded-xl border sm:flex-1 sm:basis-[calc(50%-0.25rem)] ${
+                type.category === 'energy' ? 'border-zap-dim' : 'border-crema-dim'
               }`}
             >
-              <span className="display text-[0.9375rem] leading-tight font-semibold text-foam">
-                {type.name}
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => log(type)}
+                className={`keycap flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-2.5 text-left disabled:opacity-60 ${
+                  type.category === 'energy'
+                    ? 'bg-zap/10 hover:bg-zap/15'
+                    : 'bg-crema/10 hover:bg-crema/15'
+                }`}
+              >
+                <span className="display truncate text-[0.9375rem] leading-tight font-semibold text-foam">
+                  {type.name}
+                </span>
+                <span className="font-gauge text-[0.6875rem] text-oat">{type.caffeineMg}</span>
+              </button>
+
+              {/*
+               * Its own control beside the button rather than a long-press on
+               * it: a long-press cannot be reached by keyboard and is invisible
+               * to anyone who has not been told about it.
+               */}
+              <span
+                className={`flex items-center px-1.5 ${
+                  type.category === 'energy' ? 'bg-zap/10' : 'bg-crema/10'
+                }`}
+              >
+                <VolumePicker
+                  type={type}
+                  pending={pending}
+                  onLog={(choice) =>
+                    run(choice.caffeineMg, () =>
+                      logDrinkAction(type.slug, earlierTime ?? undefined, choice.volumeMl),
+                    )
+                  }
+                />
               </span>
-              <span className="font-gauge text-[0.6875rem] text-oat">{type.caffeineMg}</span>
-            </button>
+            </div>
           ))}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <DrinkSheet drinkTypes={drinkTypes} onPick={log} pending={pending} />
         </div>
 
         {earlierTime === null ? (

@@ -58,7 +58,28 @@ export const SLEEP_THRESHOLD_MG = 50
 
 const LN2 = Math.LN2
 const ABSORPTION_RATE = LN2 / ABSORPTION_HALF_LIFE_MS
-const ELIMINATION_RATE = LN2 / ELIMINATION_HALF_LIFE_MS
+
+/**
+ * The two figures that differ enough between people to be worth asking about.
+ *
+ * Elimination half-life is the one that matters most: the several-fold spread
+ * between individuals means a single hardcoded figure is confidently wrong for
+ * most of them. The sleep threshold is a preference as much as a physiological
+ * fact, so it belongs to the person too.
+ *
+ * Absorption is deliberately *not* here. It varies far less, and nobody can
+ * sensibly self-report how fast their gut works.
+ */
+export type Profile = {
+  eliminationHalfLifeMs: number
+  sleepThresholdMg: number
+}
+
+/** The typical healthy adult, and what every member starts on. */
+export const DEFAULT_PROFILE: Profile = {
+  eliminationHalfLifeMs: ELIMINATION_HALF_LIFE_MS,
+  sleepThresholdMg: SLEEP_THRESHOLD_MG,
+}
 
 /** One drink's worth of caffeine, and when it was drunk. */
 export type Dose = { consumedAt: Date; mg: number }
@@ -71,21 +92,29 @@ export type Dose = { consumedAt: Date; mg: number }
  * has not been absorbed yet. Zero at the moment of drinking, when the whole
  * dose is still in the first compartment.
  */
-function contribution(mg: number, elapsedMs: number): number {
+function contribution(mg: number, elapsedMs: number, eliminationRate: number): number {
   if (elapsedMs <= 0) return 0
 
-  const scale = ABSORPTION_RATE / (ABSORPTION_RATE - ELIMINATION_RATE)
+  const scale = ABSORPTION_RATE / (ABSORPTION_RATE - eliminationRate)
   return (
     mg *
     scale *
-    (Math.exp(-ELIMINATION_RATE * elapsedMs) - Math.exp(-ABSORPTION_RATE * elapsedMs))
+    (Math.exp(-eliminationRate * elapsedMs) - Math.exp(-ABSORPTION_RATE * elapsedMs))
   )
 }
 
 /** Estimated milligrams of caffeine in the body at `instant`. */
-export function bodyLoadAt(doses: Dose[], instant: Date): number {
+export function bodyLoadAt(
+  doses: Dose[],
+  instant: Date,
+  profile: Profile = DEFAULT_PROFILE,
+): number {
+  const eliminationRate = LN2 / profile.eliminationHalfLifeMs
+
   return doses.reduce(
-    (total, dose) => total + contribution(dose.mg, instant.getTime() - dose.consumedAt.getTime()),
+    (total, dose) =>
+      total +
+      contribution(dose.mg, instant.getTime() - dose.consumedAt.getTime(), eliminationRate),
     0,
   )
 }
@@ -112,7 +141,8 @@ export function bloodCaffeineCurve(
     to,
     now,
     stepMs = 10 * MINUTE_MS,
-  }: { from: Date; to: Date; now: Date; stepMs?: number },
+    profile = DEFAULT_PROFILE,
+  }: { from: Date; to: Date; now: Date; stepMs?: number; profile?: Profile },
 ): CurvePoint[] {
   const times = new Set<number>([from.getTime(), to.getTime()])
 
@@ -124,7 +154,7 @@ export function bloodCaffeineCurve(
     .sort((a, b) => a - b)
     .map((at) => ({
       at,
-      mg: bodyLoadAt(doses, new Date(at)),
+      mg: bodyLoadAt(doses, new Date(at), profile),
       // The joining sample counts as measured, so the solid line reaches it.
       projected: at > now.getTime(),
     }))
@@ -141,15 +171,22 @@ export function clearsBelowAt(
   doses: Dose[],
   {
     from,
-    threshold = SLEEP_THRESHOLD_MG,
+    profile = DEFAULT_PROFILE,
+    threshold = profile.sleepThresholdMg,
     stepMs = 5 * MINUTE_MS,
     horizonMs = 24 * HOUR_MS,
-  }: { from: Date; threshold?: number; stepMs?: number; horizonMs?: number },
+  }: {
+    from: Date
+    profile?: Profile
+    threshold?: number
+    stepMs?: number
+    horizonMs?: number
+  },
 ): Date | null {
   const limit = from.getTime() + horizonMs
 
   for (let t = from.getTime(); t <= limit; t += stepMs) {
-    if (bodyLoadAt(doses, new Date(t)) <= threshold) return new Date(t)
+    if (bodyLoadAt(doses, new Date(t), profile) <= threshold) return new Date(t)
   }
 
   return null
@@ -177,13 +214,17 @@ const PADDING_MS = 30 * MINUTE_MS
  * ends: an empty day still needs an axis, and a day that will not clear inside
  * twelve hours is better shown as "not tonight" than by zooming out further.
  */
-export function curveWindow(doses: Dose[], now: Date): { from: Date; to: Date } {
+export function curveWindow(
+  doses: Dose[],
+  now: Date,
+  profile: Profile = DEFAULT_PROFILE,
+): { from: Date; to: Date } {
   const earliest = Math.min(...doses.map((d) => d.consumedAt.getTime()))
   const from = Number.isFinite(earliest)
     ? Math.max(now.getTime() - LOOKBACK_MS, earliest - PADDING_MS)
     : now.getTime() - LOOKBACK_MS
 
-  const crossing = clearsBelowAt(doses, { from: now })
+  const crossing = clearsBelowAt(doses, { from: now, profile })
   const wanted = crossing ? crossing.getTime() + PADDING_MS : now.getTime() + MAX_PROJECTION_MS
   const to = Math.min(
     now.getTime() + MAX_PROJECTION_MS,
@@ -209,12 +250,113 @@ export type SleepOutlook =
  * against the line, and the further out the projection runs the less it is
  * worth. "Not tonight" is the honest form of that answer.
  */
-export function sleepOutlook(doses: Dose[], now: Date): SleepOutlook {
-  const crossing = clearsBelowAt(doses, { from: now })
+export function sleepOutlook(
+  doses: Dose[],
+  now: Date,
+  profile: Profile = DEFAULT_PROFILE,
+): SleepOutlook {
+  const crossing = clearsBelowAt(doses, { from: now, profile })
   if (crossing && crossing.getTime() <= now.getTime()) return { kind: 'clear' }
 
-  const { to } = curveWindow(doses, now)
+  const { to } = curveWindow(doses, now, profile)
   if (!crossing || crossing.getTime() > to.getTime()) return { kind: 'not-tonight' }
 
   return { kind: 'clears', at: crossing }
+}
+
+/**
+ * How long after bedtime the caffeine still has to behave.
+ *
+ * A dose peaks roughly fifty minutes after it is drunk, so a constraint applied
+ * only at the moment of getting into bed is no constraint at all. Three hours
+ * covers the peak of anything drunk right up to bedtime with room to spare.
+ */
+const SLEEP_WINDOW_MS = 3 * HOUR_MS
+
+/**
+ * The latest you could have one more drink and still sleep.
+ *
+ * Sampled backwards from bedtime rather than solved, for the same reason as
+ * {@link clearsBelowAt}: no closed form, and the answer is shown to the nearest
+ * five minutes.
+ *
+ * The condition is deliberately the *worst* load across the first hours of
+ * sleep, not the load at bedtime. Checking bedtime alone would report that a
+ * coffee ten minutes earlier is fine — it has barely been absorbed by then, and
+ * peaks in the middle of the night.
+ *
+ * Returns `null` when no time works: either bedtime has passed, or what is
+ * already in the system will breach the threshold on its own. "Not tonight" is
+ * a real answer and better than a time that isn't true.
+ */
+export function lastCallBefore(
+  doses: Dose[],
+  {
+    now,
+    bedtime,
+    doseMg,
+    profile = DEFAULT_PROFILE,
+    stepMs = 5 * MINUTE_MS,
+  }: { now: Date; bedtime: Date; doseMg: number; profile?: Profile; stepMs?: number },
+): Date | null {
+  const worstDuringSleep = (candidate: Dose[]) => {
+    let worst = 0
+    for (let t = bedtime.getTime(); t <= bedtime.getTime() + SLEEP_WINDOW_MS; t += stepMs) {
+      worst = Math.max(worst, bodyLoadAt(candidate, new Date(t), profile))
+    }
+    return worst
+  }
+
+  for (let t = bedtime.getTime(); t >= now.getTime(); t -= stepMs) {
+    const withOneMore = [...doses, { consumedAt: new Date(t), mg: doseMg }]
+    if (worstDuringSleep(withOneMore) <= profile.sleepThresholdMg) return new Date(t)
+  }
+
+  return null
+}
+
+/** One person's drinks and the physiology to model them by. */
+export type Bloodstream = { profile: Profile; doses: Dose[] }
+
+/**
+ * Everyone's caffeine added together.
+ *
+ * Each member is modelled with their own clearance rate and the results summed,
+ * rather than pooling the milligrams and applying one half-life to the total —
+ * that would treat the office as a single very large person, and gives a
+ * different answer.
+ */
+export function combinedLoadAt(team: Bloodstream[], instant: Date): number {
+  return team.reduce(
+    (total, member) => total + bodyLoadAt(member.doses, instant, member.profile),
+    0,
+  )
+}
+
+/**
+ * The team curve, sampled the same way {@link bloodCaffeineCurve} samples one
+ * person's — grid anchored on `now`, so the measured and projected halves meet.
+ */
+export function combinedCaffeineCurve(
+  team: Bloodstream[],
+  {
+    from,
+    to,
+    now,
+    stepMs = 10 * MINUTE_MS,
+  }: { from: Date; to: Date; now: Date; stepMs?: number },
+): CurvePoint[] {
+  const times = new Set<number>([from.getTime(), to.getTime()])
+
+  for (let t = now.getTime(); t >= from.getTime(); t -= stepMs) times.add(t)
+  for (let t = now.getTime(); t <= to.getTime(); t += stepMs) times.add(t)
+
+  return [...times]
+    .filter((t) => t >= from.getTime() && t <= to.getTime())
+    .sort((a, b) => a - b)
+    .map((at) => ({
+      at,
+      mg: combinedLoadAt(team, new Date(at)),
+      projected: at > now.getTime(),
+    }))
 }

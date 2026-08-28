@@ -77,6 +77,32 @@ export const members = sqliteTable('members', {
   displayName: text('display_name').notNull(),
   isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
   joinedAt: integer('joined_at', { mode: 'timestamp_ms' }).notNull(),
+
+  /* ---------------------------------------------------------------------- */
+  /* Personal settings, all with the population defaults the app shipped    */
+  /* with, so an untouched account behaves exactly as it did before.        */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * How fast this person clears caffeine.
+   *
+   * Minutes rather than hours so the column stays an integer while the form
+   * still accepts 5.5. The several-fold spread between individuals is the whole
+   * reason this is a setting: one hardcoded figure is wrong for most people.
+   */
+  eliminationHalfLifeMinutes: integer('elimination_half_life_minutes')
+    .notNull()
+    .default(300),
+  /** The load below which this person reckons caffeine won't cost them sleep. */
+  sleepThresholdMg: integer('sleep_threshold_mg').notNull().default(50),
+  /** `HH:MM` in {@link APP_TIMEZONE}, for "how late can I have a coffee". */
+  bedtimeLocal: text('bedtime_local').notNull().default('23:00'),
+  /**
+   * The newest patch note this person has seen, or null for someone who
+   * predates the feature. Server-side rather than in localStorage so the notes
+   * follow the account across devices instead of firing once per browser.
+   */
+  lastSeenPatchNote: text('last_seen_patch_note'),
 })
 
 /**
@@ -94,6 +120,13 @@ export const drinkTypes = sqliteTable('drink_types', {
   caffeineMg: integer('caffeine_mg').notNull(),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
+  /**
+   * Who added it, for the drinks members contribute themselves.
+   *
+   * Null for the seeded types and for anyone since deleted — a drink outlives
+   * the person who added it, because logs still point at it.
+   */
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
 })
 
 /**
@@ -128,6 +161,14 @@ export const drinkLogs = sqliteTable(
      * coffee backdated to breakfast would arrive already too old to take back.
      */
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * The volume actually drunk, when it differed from the drink type's.
+     *
+     * Null means "the standard serving". Recorded so history can explain
+     * itself: without it a 400ml mug shows up as a milligram figure matching no
+     * drink in the list.
+     */
+    volumeMl: integer('volume_ml'),
     localDate: text('local_date').notNull(),
     localHour: integer('local_hour').notNull(),
   },

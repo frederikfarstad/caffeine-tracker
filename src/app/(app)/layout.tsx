@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { PatchNotesDialog } from '@/components/PatchNotesDialog'
+import { unseenPatchNotes } from '@/lib/patch-notes'
 import { requireMember, signOut } from '@/server/auth'
 
 const NAV = [
@@ -17,6 +19,10 @@ const ADMIN_NAV = { href: '/admin', label: 'Drinks' }
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const member = await requireMember()
+
+  // Decided on the server, so the dialog is either in the markup or it isn't —
+  // no mounting one and then closing it on the client.
+  const unseen = unseenPatchNotes(member.lastSeenPatchNote)
 
   async function signOutAction() {
     'use server'
@@ -54,6 +60,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="font-gauge text-[0.6875rem] tracking-[0.1em] text-oat uppercase">
             {member.displayName}
           </span>
+          {/*
+           * Named plainly rather than hidden behind the display name, and here
+           * rather than in the nav: settings is a place you visit once and then
+           * forget, and a fifth nav pill would push the bar to two rows on a
+           * phone.
+           */}
+          <Link
+            href="/settings"
+            className="font-gauge text-[0.6875rem] tracking-[0.1em] text-oat uppercase transition-colors hover:text-foam"
+          >
+            Settings
+          </Link>
           <form action={signOutAction}>
             <button
               type="submit"
@@ -66,6 +84,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <main className="flex-1 space-y-4">{children}</main>
+
+      {unseen.length > 0 && (
+        <PatchNotesDialog notes={unseen} seen={member.lastSeenPatchNote} />
+      )}
     </div>
   )
 }

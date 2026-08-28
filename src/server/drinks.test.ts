@@ -6,7 +6,10 @@ import { findRollupDrift } from '@/db/rollup'
 import { DRINK_TYPE_SEEDS } from '@/db/seed-data'
 import {
   UNDO_WINDOW_MS,
+  deleteDrinkLog,
   getUndoableDrink,
+  getUserRecentDrinks,
+  updateDrinkLog,
   listActiveDrinkTypes,
   logDrink,
   resolveConsumedAt,
@@ -152,6 +155,41 @@ describe('logDrink', () => {
     await logDrink(db, { userId: 'linn', slug: 'espresso', now })
 
     expect(await findRollupDrift(db)).toEqual([])
+  })
+})
+
+describe('logDrink with an adjusted volume', () => {
+  it('scales the dose to the volume actually drunk', async () => {
+    // A 0.5L can is 160mg; drink 250ml of it and you have had 80.
+    const result = await logDrink(db, { userId: 'ada', slug: 'energy_050', now, volumeMl: 250 })
+    expect(result).toMatchObject({ ok: true, caffeineMg: 80 })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 80, volumeMl: 250 })
+    expect((await totalsFor('ada', '2026-08-26')).totalMg).toBe(80)
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('scales upward for a bigger serving', async () => {
+    const result = await logDrink(db, { userId: 'ada', slug: 'espresso', now, volumeMl: 60 })
+    // 30ml espresso at 63mg, doubled.
+    expect(result).toMatchObject({ ok: true, caffeineMg: 126 })
+  })
+
+  it('records no volume when the standard serving was drunk', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'energy_050', now })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 160, volumeMl: null })
+  })
+
+  // Coffee has no serving size in the catalogue, so there is nothing to scale
+  // from and the server must refuse rather than invent a base.
+  it('refuses a volume for a drink with no standard serving', async () => {
+    const result = await logDrink(db, { userId: 'ada', slug: 'coffee', now, volumeMl: 400 })
+
+    expect(result).toMatchObject({ ok: false, reason: 'no-base-volume' })
+    expect(await db.select().from(drinkLogs)).toEqual([])
   })
 })
 
@@ -449,5 +487,237 @@ describe('resolveConsumedAt', () => {
       ok: true,
       consumedAt: new Date('2026-08-26T22:10:00Z'),
     })
+  })
+})
+
+describe('updateDrinkLog', () => {
+  async function logCoffee(overrides: Partial<{ slug: string; consumedAt: Date }> = {}) {
+    const result = await logDrink(db, {
+      userId: 'ada',
+      slug: overrides.slug ?? 'coffee',
+      now,
+      consumedAt: overrides.consumedAt ?? now,
+    })
+    if (!result.ok) throw new Error('unreachable')
+    return result.logId
+  }
+
+  it('moves a drink to another time on the same day', async () => {
+    const id = await logCoffee()
+    const earlier = new Date('2026-08-26T05:00:00Z') // 07:00 Oslo
+
+    const result = await updateDrinkLog(db, { userId: 'ada', logId: id, consumedAt: earlier })
+    expect(result).toMatchObject({ ok: true })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log.consumedAt).toEqual(earlier)
+    expect(log.localHour).toBe(7)
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  // The case the rollup makes interesting: the milligrams have to leave one
+  // day's row and land on another's.
+  it('moves the milligrams between days when the edit crosses midnight', async () => {
+    const id = await logCoffee()
+    const yesterdayEvening = new Date('2026-08-25T20:00:00Z') // 22:00 Oslo, the 25th
+
+    await updateDrinkLog(db, { userId: 'ada', logId: id, consumedAt: yesterdayEvening })
+
+    expect(await totalsFor('ada', '2026-08-26')).toBeUndefined()
+    expect(await totalsFor('ada', '2026-08-25')).toMatchObject({ totalMg: 95, coffeeCount: 1 })
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('changes the drink type, and the category counts with it', async () => {
+    const id = await logCoffee()
+
+    await updateDrinkLog(db, { userId: 'ada', logId: id, slug: 'energy_050' })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 160, category: 'energy' })
+    expect(await totalsFor('ada', '2026-08-26')).toMatchObject({
+      totalMg: 160,
+      coffeeCount: 0,
+      energyCount: 1,
+      coffeeMg: 0,
+      energyMg: 160,
+    })
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('changes the time and the type at once', async () => {
+    const id = await logCoffee()
+
+    await updateDrinkLog(db, {
+      userId: 'ada',
+      logId: id,
+      slug: 'espresso',
+      consumedAt: new Date('2026-08-25T20:00:00Z'),
+    })
+
+    expect(await totalsFor('ada', '2026-08-26')).toBeUndefined()
+    expect(await totalsFor('ada', '2026-08-25')).toMatchObject({ totalMg: 63, coffeeCount: 1 })
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('rescales the dose when a volume is given', async () => {
+    const id = await logCoffee({ slug: 'energy_050' })
+
+    // Half of a 0.5L can: 500ml at 160mg becomes 250ml at 80mg.
+    await updateDrinkLog(db, { userId: 'ada', logId: id, volumeMl: 250 })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 80, volumeMl: 250 })
+    expect((await totalsFor('ada', '2026-08-26')).totalMg).toBe(80)
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  // Coffee has no serving size in the catalogue, so there is nothing to scale
+  // from. The picker offers a multiplier for these instead of a millilitre
+  // slider, and the server has to refuse rather than guess a base volume.
+  it('refuses a volume for a drink with no standard serving', async () => {
+    const id = await logCoffee()
+    const result = await updateDrinkLog(db, { userId: 'ada', logId: id, volumeMl: 400 })
+
+    expect(result).toMatchObject({ ok: false, reason: 'no-base-volume' })
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 95, volumeMl: null })
+  })
+
+  it('clears a volume back to the standard serving', async () => {
+    const id = await logCoffee({ slug: 'energy_050' })
+    await updateDrinkLog(db, { userId: 'ada', logId: id, volumeMl: 250 })
+    await updateDrinkLog(db, { userId: 'ada', logId: id, volumeMl: null })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 160, volumeMl: null })
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('leaves everything alone when nothing is asked for', async () => {
+    const id = await logCoffee()
+    await updateDrinkLog(db, { userId: 'ada', logId: id })
+
+    const [log] = await db.select().from(drinkLogs)
+    expect(log).toMatchObject({ caffeineMg: 95, localDate: '2026-08-26' })
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('refuses an unknown drink type and changes nothing', async () => {
+    const id = await logCoffee()
+    const result = await updateDrinkLog(db, { userId: 'ada', logId: id, slug: 'moon-juice' })
+
+    expect(result).toMatchObject({ ok: false, reason: 'unknown-drink' })
+    const [log] = await db.select().from(drinkLogs)
+    expect(log.caffeineMg).toBe(95)
+  })
+
+  it('refuses a log that does not exist', async () => {
+    const result = await updateDrinkLog(db, { userId: 'ada', logId: 9999, consumedAt: now })
+    expect(result).toMatchObject({ ok: false, reason: 'not-found' })
+  })
+
+  // Authorisation: the id comes from the client, so the scope is the guard.
+  it('never touches another member’s drink', async () => {
+    const result = await logDrink(db, { userId: 'linn', slug: 'coffee', now })
+    if (!result.ok) throw new Error('unreachable')
+
+    const attempt = await updateDrinkLog(db, {
+      userId: 'ada',
+      logId: result.logId,
+      slug: 'energy_050',
+    })
+
+    expect(attempt).toMatchObject({ ok: false, reason: 'not-found' })
+    const [log] = await db.select().from(drinkLogs)
+    expect(log.caffeineMg).toBe(95)
+  })
+})
+
+describe('deleteDrinkLog', () => {
+  it('removes the drink and its milligrams', async () => {
+    const first = await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    await logDrink(db, { userId: 'ada', slug: 'espresso', now })
+    if (!first.ok) throw new Error('unreachable')
+
+    const result = await deleteDrinkLog(db, { userId: 'ada', logId: first.logId })
+    expect(result).toMatchObject({ ok: true })
+
+    expect(await db.select().from(drinkLogs)).toHaveLength(1)
+    expect(await totalsFor('ada', '2026-08-26')).toMatchObject({ totalMg: 63, coffeeCount: 1 })
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('removes the rollup row when the day’s last drink goes', async () => {
+    const result = await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    if (!result.ok) throw new Error('unreachable')
+
+    await deleteDrinkLog(db, { userId: 'ada', logId: result.logId })
+
+    expect(await totalsFor('ada', '2026-08-26')).toBeUndefined()
+    expect(await findRollupDrift(db)).toEqual([])
+  })
+
+  it('works long after the undo window has closed', async () => {
+    const result = await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    if (!result.ok) throw new Error('unreachable')
+
+    const muchLater = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000)
+    expect(await deleteDrinkLog(db, { userId: 'ada', logId: result.logId, now: muchLater })).toMatchObject({
+      ok: true,
+    })
+  })
+
+  it('refuses a log that does not exist', async () => {
+    expect(await deleteDrinkLog(db, { userId: 'ada', logId: 9999 })).toMatchObject({
+      ok: false,
+      reason: 'not-found',
+    })
+  })
+
+  it('never deletes another member’s drink', async () => {
+    const result = await logDrink(db, { userId: 'linn', slug: 'coffee', now })
+    if (!result.ok) throw new Error('unreachable')
+
+    expect(await deleteDrinkLog(db, { userId: 'ada', logId: result.logId })).toMatchObject({
+      ok: false,
+      reason: 'not-found',
+    })
+    expect(await db.select().from(drinkLogs)).toHaveLength(1)
+  })
+})
+
+describe('getUserRecentDrinks', () => {
+  it('is empty with nothing logged', async () => {
+    expect(await getUserRecentDrinks(db, 'ada', { now })).toEqual([])
+  })
+
+  it('lists the member’s drinks newest first, with what the row needs', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now, consumedAt: new Date('2026-08-26T05:00:00Z') })
+    await logDrink(db, { userId: 'ada', slug: 'energy_050', now })
+
+    const recent = await getUserRecentDrinks(db, 'ada', { now })
+    expect(recent.map((drink) => drink.name)).toEqual(['Energy 0.5L', 'Coffee'])
+    expect(recent[0]).toMatchObject({ caffeineMg: 160, slug: 'energy_050' })
+    expect(recent[0]).toHaveProperty('id')
+    expect(recent[0]).toHaveProperty('consumedAt')
+  })
+
+  it('reaches back the requested number of days and no further', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    await logDrink(db, {
+      userId: 'ada',
+      slug: 'espresso',
+      now,
+      consumedAt: new Date('2026-08-20T08:00:00Z'),
+    })
+
+    expect(await getUserRecentDrinks(db, 'ada', { now, days: 0 })).toHaveLength(1)
+    expect(await getUserRecentDrinks(db, 'ada', { now, days: 7 })).toHaveLength(2)
+  })
+
+  it('never lists another member’s drinks', async () => {
+    await logDrink(db, { userId: 'linn', slug: 'coffee', now })
+    expect(await getUserRecentDrinks(db, 'ada', { now })).toEqual([])
   })
 })

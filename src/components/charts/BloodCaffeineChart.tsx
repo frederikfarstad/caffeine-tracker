@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { ChartTooltip } from './ChartTooltip'
-import { SLEEP_THRESHOLD_MG, type CurvePoint } from '@/lib/blood-caffeine'
+import type { CurvePoint } from '@/lib/blood-caffeine'
 import { formatOsloClock } from '@/lib/format'
 
 const AXIS_STYLE = {
@@ -42,7 +42,16 @@ const ANNOTATION_STYLE = {
  * are ten minutes apart and the interesting features — a peak forty minutes
  * after a drink, a threshold crossing — sit between whole hours.
  */
-export function BloodCaffeineChart({ data, now }: { data: CurvePoint[]; now: Date }) {
+export function BloodCaffeineChart({
+  data,
+  now,
+  thresholdMg,
+}: {
+  data: CurvePoint[]
+  now: Date
+  /** The reader's own sleep threshold, not a shared constant. */
+  thresholdMg: number
+}) {
   const series = data.map((point) => ({
     at: point.at,
     // The joining sample carries both, so neither line stops short of it.
@@ -80,11 +89,11 @@ export function BloodCaffeineChart({ data, now }: { data: CurvePoint[]; now: Dat
          * for how much you have had today.
          */}
         <ReferenceLine
-          y={SLEEP_THRESHOLD_MG}
+          y={thresholdMg}
           stroke="var(--color-oat)"
           strokeDasharray="2 4"
           label={{
-            value: `${SLEEP_THRESHOLD_MG} mg · sleep`,
+            value: `${thresholdMg} mg · sleep`,
             // Above the rule at the right-hand end. By the time the plot ends
             // the curve has dropped below the rule, so the space above it is
             // clear — which is not true of the space below.

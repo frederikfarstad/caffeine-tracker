@@ -2,9 +2,11 @@ import { and, asc, count, eq, gte, lte, min, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import type { Db } from '@/db'
-import { dailyTotals, drinkLogs, members, users } from '@/db/schema'
+import { dailyTotals, drinkLogs, drinkTypes, members, users } from '@/db/schema'
 import type { TestDb } from '@/db/test-db'
 import type { DrinkCategory } from '@/lib/caffeine'
+import type { Profile } from '@/lib/blood-caffeine'
+import { listActiveDrinkTypes, type ActiveDrinkType } from './drinks'
 import {
   addLocalDays,
   bucketFor,
@@ -267,6 +269,65 @@ export async function getUserIntakeEvents(
     .orderBy(asc(drinkLogs.consumedAt))
 }
 
+/**
+ * A member's most-logged drinks, for the picker's one-tap row.
+ *
+ * The catalogue is open to everyone now, so it will grow past the point where a
+ * flat grid of every drink is usable. This is what keeps logging at one tap:
+ * the four or six you actually order, in front, with the rest behind a search.
+ *
+ * Padded from the catalogue's display order rather than returned short — a new
+ * colleague with no history still needs a full row of buttons, and a row that
+ * changes length as you use the app looks broken.
+ *
+ * Bounded to the last `days` local dates, which is what the
+ * `(user_id, local_date)` index answers. Also stops a phase you went through in
+ * March from outranking what you drink now.
+ */
+export async function getUserFavouriteDrinkTypes(
+  db: AnyDb,
+  userId: string,
+  { limit, now = new Date(), days = 30 }: { limit: number; now?: Date; days?: number },
+): Promise<ActiveDrinkType[]> {
+  const since = addLocalDays(localDateOf(now), -days)
+
+  const [ranked, catalogue] = await Promise.all([
+    db
+      .select({
+        id: drinkTypes.id,
+        slug: drinkTypes.slug,
+        name: drinkTypes.name,
+        category: drinkTypes.category,
+        volumeMl: drinkTypes.volumeMl,
+        caffeineMg: drinkTypes.caffeineMg,
+      })
+      .from(drinkLogs)
+      .innerJoin(drinkTypes, eq(drinkTypes.id, drinkLogs.drinkTypeId))
+      .where(
+        and(
+          eq(drinkLogs.userId, userId),
+          gte(drinkLogs.localDate, since),
+          eq(drinkTypes.isActive, true),
+        ),
+      )
+      .groupBy(drinkTypes.id)
+      // Ties break on display order, so the row is stable rather than arbitrary.
+      .orderBy(sql`count(*) desc`, asc(drinkTypes.sortOrder), asc(drinkTypes.id))
+      .limit(limit),
+    listActiveDrinkTypes(db),
+  ])
+
+  const favourites: ActiveDrinkType[] = [...ranked]
+  const chosen = new Set(favourites.map((type) => type.id))
+
+  for (const type of catalogue) {
+    if (favourites.length >= limit) break
+    if (!chosen.has(type.id)) favourites.push(type)
+  }
+
+  return favourites
+}
+
 export async function getUserStreak(db: AnyDb, userId: string, now = new Date()): Promise<number> {
   const rows = await db
     .select({ localDate: dailyTotals.localDate })
@@ -333,6 +394,72 @@ export async function getLeaderboard(
 
   rows.sort((a, b) => b.totalMg - a.totalMg || a.displayName.localeCompare(b.displayName))
   return assignRanks(rows)
+}
+
+/** One member's drinks in the window, with the physiology to model them by. */
+export type MemberIntake = {
+  userId: string
+  profile: Profile
+  doses: { consumedAt: Date; mg: number }[]
+}
+
+/**
+ * Everyone's recent drinks, grouped by member, for the team caffeine curve.
+ *
+ * Grouped rather than pooled because clearance is per person: summing the
+ * milligrams first and applying one half-life to the total would model a
+ * thirty-person office as a single very large human. Each member's curve is
+ * computed with their own profile and the curves are added.
+ *
+ * The same cost shape as `getUserIntakeEvents`, minus the user predicate: the
+ * `local_date` bound keeps it to two days of drinks across the team — a couple
+ * of hundred rows — rather than the table.
+ */
+export async function getTeamIntakeEvents(
+  db: AnyDb,
+  { from, now = new Date() }: { from: Date; now?: Date },
+): Promise<MemberIntake[]> {
+  const rows = await db
+    .select({
+      userId: drinkLogs.userId,
+      consumedAt: drinkLogs.consumedAt,
+      caffeineMg: drinkLogs.caffeineMg,
+      halfLifeMinutes: members.eliminationHalfLifeMinutes,
+      sleepThresholdMg: members.sleepThresholdMg,
+    })
+    .from(drinkLogs)
+    .innerJoin(members, eq(members.userId, drinkLogs.userId))
+    .where(
+      and(
+        gte(drinkLogs.localDate, localDateOf(from)),
+        lte(drinkLogs.localDate, localDateOf(now)),
+        gte(drinkLogs.consumedAt, from),
+      ),
+    )
+    .orderBy(asc(drinkLogs.consumedAt))
+
+  const byMember = new Map<string, MemberIntake>()
+
+  for (const row of rows) {
+    const existing = byMember.get(row.userId)
+    const dose = { consumedAt: row.consumedAt, mg: row.caffeineMg }
+
+    if (existing) {
+      existing.doses.push(dose)
+      continue
+    }
+
+    byMember.set(row.userId, {
+      userId: row.userId,
+      profile: {
+        eliminationHalfLifeMs: row.halfLifeMinutes * 60_000,
+        sleepThresholdMg: row.sleepThresholdMg,
+      },
+      doses: [dose],
+    })
+  }
+
+  return [...byMember.values()]
 }
 
 export async function getTeamTimeSeries(
