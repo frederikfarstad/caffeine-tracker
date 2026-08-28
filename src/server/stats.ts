@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, lte, min, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, lte, min, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import type { Db } from '@/db'
@@ -460,6 +460,70 @@ export async function getTeamIntakeEvents(
   }
 
   return [...byMember.values()]
+}
+
+/** One drink, as the ticker shows it: who, what, and when. */
+export type TeamActivityEvent = {
+  id: number
+  userId: string
+  displayName: string
+  drinkName: string
+  caffeineMg: number
+  volumeMl: number | null
+  consumedAt: Date
+}
+
+/** How far back the feed looks. Long enough to cover a working day. */
+const ACTIVITY_WINDOW_MS = 12 * 60 * 60 * 1000
+
+/**
+ * The team's most recent drinks.
+ *
+ * Deliberately reads `drink_logs` and never `alcohol_logs`. Party mode is
+ * opt-in and per member, and the viewer having it switched on is not the same
+ * as the person in the feed having agreed to appear in one. Caffeine is already
+ * team-visible on the leaderboard, so this discloses nothing new; alcohol would
+ * disclose something a member entered only for themselves.
+ *
+ * Bounded by `local_date` across two days rather than by `consumed_at` alone,
+ * so `drink_logs_date_idx` serves it and the scan stays flat as history grows.
+ * Two dates because midnight should not empty the feed: a drink at eleven last
+ * night is still recent at half past midnight, and it carries yesterday's date.
+ *
+ * The upper bound on `consumed_at` matters as much as the lower one. A drink
+ * can be logged for an earlier time, and without it a fixture — or a clock
+ * skew — could put something in the feed that has not happened yet.
+ */
+export async function getTeamActivity(
+  db: AnyDb,
+  { now = new Date(), limit = 15 }: { now?: Date; limit?: number } = {},
+): Promise<TeamActivityEvent[]> {
+  const today = localDateOf(now)
+  const since = new Date(now.getTime() - ACTIVITY_WINDOW_MS)
+
+  return db
+    .select({
+      id: drinkLogs.id,
+      userId: drinkLogs.userId,
+      displayName: members.displayName,
+      drinkName: drinkTypes.name,
+      caffeineMg: drinkLogs.caffeineMg,
+      volumeMl: drinkLogs.volumeMl,
+      consumedAt: drinkLogs.consumedAt,
+    })
+    .from(drinkLogs)
+    .innerJoin(members, eq(members.userId, drinkLogs.userId))
+    .innerJoin(drinkTypes, eq(drinkTypes.id, drinkLogs.drinkTypeId))
+    .where(
+      and(
+        gte(drinkLogs.localDate, addLocalDays(today, -1)),
+        lte(drinkLogs.localDate, today),
+        gte(drinkLogs.consumedAt, since),
+        lte(drinkLogs.consumedAt, now),
+      ),
+    )
+    .orderBy(desc(drinkLogs.consumedAt))
+    .limit(limit)
 }
 
 export async function getTeamTimeSeries(
