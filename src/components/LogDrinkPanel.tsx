@@ -158,45 +158,46 @@ export function LogDrinkPanel({
           ))}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/*
+         * Both secondary controls share one row. As underlined text they could
+         * sit on separate lines and still read as a footer; as chips, stacked,
+         * they read as a column of buttons competing with the drink grid above.
+         */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <DrinkSheet drinkTypes={drinkTypes} onPick={log} pending={pending} />
-        </div>
 
-        {earlierTime === null ? (
-          <button
-            type="button"
-            onClick={() => setEarlierTime(osloClockNow())}
-            className="mt-3 font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
-          >
-            Log an earlier time
-          </button>
-        ) : (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <label
-              htmlFor="earlier-time"
-              className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase"
-            >
-              Drunk at
-            </label>
-            <input
-              id="earlier-time"
-              type="time"
-              value={earlierTime}
-              // Times later today are refused by the server anyway; `max` lets
-              // the browser say so before a round trip.
-              max={osloClockNow()}
-              onChange={(event) => setEarlierTime(event.target.value)}
-              className="font-gauge rounded-lg border border-hairline bg-roast px-2.5 py-1.5 text-sm text-foam"
-            />
+          {earlierTime === null ? (
             <button
               type="button"
-              onClick={() => setEarlierTime(null)}
-              className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+              onClick={() => setEarlierTime(osloClockNow())}
+              className="chip"
             >
-              Back to now
+              Log an earlier time
             </button>
-          </div>
-        )}
+          ) : (
+            <>
+              <label
+                htmlFor="earlier-time"
+                className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase"
+              >
+                Drunk at
+              </label>
+              <input
+                id="earlier-time"
+                type="time"
+                value={earlierTime}
+                // Times later today are refused by the server anyway; `max` lets
+                // the browser say so before a round trip.
+                max={osloClockNow()}
+                onChange={(event) => setEarlierTime(event.target.value)}
+                className="font-gauge rounded-lg border border-hairline bg-roast px-2.5 py-1.5 text-sm text-foam"
+              />
+              <button type="button" onClick={() => setEarlierTime(null)} className="chip">
+                Back to now
+              </button>
+            </>
+          )}
+        </div>
 
         <div className="mt-3 flex min-h-6 items-center justify-between gap-3">
           <p aria-live="polite" className="text-xs text-scald">
@@ -207,7 +208,7 @@ export function LogDrinkPanel({
               type="button"
               disabled={pending}
               onClick={() => run(-undoable.caffeineMg, undoLastDrinkAction)}
-              className="font-gauge text-[0.6875rem] tracking-[0.12em] whitespace-nowrap text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam disabled:opacity-60"
+              className="chip border-crema-dim bg-crema/10 hover:border-crema"
             >
               Undo {undoable.name}
             </button>

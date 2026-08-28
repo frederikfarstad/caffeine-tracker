@@ -44,7 +44,7 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
         <Link
           href={days === 0 ? '/?history=7' : '/'}
           scroll={false}
-          className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+          className="chip"
         >
           {days === 0 ? 'Show earlier' : 'Today only'}
         </Link>
@@ -75,14 +75,14 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                   type="button"
                   disabled={pending || !time}
                   onClick={() => run(() => updateDrinkLogAction(drink.id, { time }))}
-                  className="font-gauge text-[0.625rem] tracking-[0.08em] text-crema uppercase underline decoration-hairline underline-offset-4 disabled:opacity-60"
+                  className="font-gauge text-[0.6875rem] tracking-[0.08em] text-crema uppercase underline decoration-crema/50 underline-offset-4 disabled:opacity-60"
                 >
                   Save
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditing(null)}
-                  className="font-gauge text-[0.625rem] tracking-[0.08em] text-oat uppercase underline decoration-hairline underline-offset-4"
+                  className="font-gauge text-[0.6875rem] tracking-[0.08em] text-foam uppercase underline decoration-oat/60 underline-offset-4"
                 >
                   Cancel
                 </button>
@@ -96,7 +96,7 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                     setEditing(drink.id)
                     setTime(formatOsloClock(drink.consumedAt))
                   }}
-                  className="font-gauge text-[0.625rem] tracking-[0.08em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam disabled:opacity-60"
+                  className="font-gauge text-[0.6875rem] tracking-[0.08em] text-foam uppercase underline decoration-oat/60 underline-offset-4 transition-colors hover:decoration-foam disabled:opacity-60"
                 >
                   Edit time
                 </button>
@@ -104,7 +104,7 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                   type="button"
                   disabled={pending}
                   onClick={() => run(() => deleteDrinkLogAction(drink.id))}
-                  className="font-gauge text-[0.625rem] tracking-[0.08em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-scald disabled:opacity-60"
+                  className="font-gauge text-[0.6875rem] tracking-[0.08em] text-oat uppercase underline decoration-oat/60 underline-offset-4 transition-colors hover:text-scald hover:decoration-scald disabled:opacity-60"
                 >
                   Delete
                 </button>

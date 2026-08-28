@@ -150,7 +150,7 @@ export function VolumePicker({
           <button
             type="button"
             onClick={close}
-            className="w-full font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 hover:text-foam"
+            className="w-full font-gauge text-[0.6875rem] tracking-[0.12em] text-foam uppercase underline decoration-oat/60 underline-offset-4 hover:text-foam"
           >
             Cancel
           </button>

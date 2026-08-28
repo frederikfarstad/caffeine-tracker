@@ -158,7 +158,7 @@ export function PartyPanel({
           <button
             type="button"
             onClick={() => setEarlierTime(osloClockNow())}
-            className="mt-3 font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+            className="chip mt-3"
           >
             Log an earlier time
           </button>
@@ -183,7 +183,7 @@ export function PartyPanel({
             <button
               type="button"
               onClick={() => setEarlierTime(null)}
-              className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+              className="chip"
             >
               Back to now
             </button>
@@ -199,7 +199,7 @@ export function PartyPanel({
               type="button"
               disabled={pending}
               onClick={() => run(-undoable.alcoholGrams, undoLastAlcoholAction)}
-              className="font-gauge text-[0.6875rem] tracking-[0.12em] whitespace-nowrap text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam disabled:opacity-60"
+              className="chip border-crema-dim bg-crema/10 hover:border-crema"
             >
               Undo {undoable.name}
             </button>

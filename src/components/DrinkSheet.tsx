@@ -62,7 +62,7 @@ export function DrinkSheet({
       <button
         type="button"
         onClick={open}
-        className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+        className="chip"
       >
         Search all drinks
       </button>
@@ -211,7 +211,7 @@ export function DrinkSheet({
                   <button
                     type="button"
                     onClick={() => setAdding(false)}
-                    className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 hover:text-foam"
+                    className="font-gauge text-[0.6875rem] tracking-[0.12em] text-foam uppercase underline decoration-oat/60 underline-offset-4 hover:text-foam"
                   >
                     Cancel
                   </button>
@@ -224,7 +224,7 @@ export function DrinkSheet({
                 <button
                   type="button"
                   onClick={() => setAdding(true)}
-                  className="font-gauge text-[0.6875rem] tracking-[0.12em] text-oat uppercase underline decoration-hairline underline-offset-4 transition-colors hover:text-foam"
+                  className="chip"
                 >
                   + Add a drink
                 </button>
