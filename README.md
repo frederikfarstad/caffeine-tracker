@@ -145,7 +145,8 @@ vibe-coded, and no human reads the pull requests. Read
 **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening one.
 
 `main` is protected. Pull requests only, linear history, squash merges, no
-force pushes, and four checks that all have to be green:
+force pushes, and four checks that all have to be green before a human — never
+a bot, and never auto-merge — presses Merge:
 
 | Check | What it runs |
 |---|---|

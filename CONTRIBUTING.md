@@ -79,6 +79,9 @@ holding the levers, and the levers are real:
 - **Direction, scope and taste are ours.** What gets built, what doesn't, and
   what "good" means here are not up for agentic negotiation. This file is one
   of those decisions.
+- **A human presses Merge.** Always. Auto-merge is disabled, so a pull request
+  with five green checks sits there until someone decides it should exist.
+  Passing the checks earns you the right to be considered, nothing more.
 - **An unresolved comment thread blocks the merge.** That is the veto. One
   human comment on one line stops a pull request dead, no matter how green it
   is. Agents are expected to answer the comment and resolve the thread, not
@@ -110,12 +113,17 @@ Commit the generated migration alongside the schema change. CI fails if the two
 disagree, because the test suite migrates from `src/db/migrations` and would
 otherwise pass on a schema that production has never seen.
 
-Then push, open the pull request, and turn on auto-merge. It will merge itself
-when the checks go green:
+Then push and open the pull request:
 
 ```bash
-gh pr create --fill && gh pr merge --squash --auto
+gh pr create --fill
 ```
+
+Then stop. Do not merge it, and do not turn on auto-merge — it is disabled on
+this repository. Green checks make a pull request *mergeable*; they do not make
+it *merged*. A human reads the title, decides the change should exist, and
+presses the button. That is the whole of the human's job here, and it is not a
+formality: it is the only point at which anything reaches `main`.
 
 ## Database changes
 

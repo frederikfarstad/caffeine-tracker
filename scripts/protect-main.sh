@@ -53,14 +53,16 @@ printf '%s' "$PROTECTION" |
 echo "  done"
 
 echo "→ Merge settings"
-# Squash only, because required_linear_history rejects merge commits. Auto-merge
-# is what lets an agent open a pull request and have it land by itself once the
-# checks pass.
+# Squash only, because required_linear_history rejects merge commits.
+#
+# Auto-merge is off on purpose. Green checks are necessary to merge but not
+# sufficient: a human presses the button, because merging is where the
+# dictating happens. Nothing reaches main without someone choosing it.
 gh api -X PATCH "repos/$REPO" \
   -F allow_squash_merge=true \
   -F allow_merge_commit=false \
   -F allow_rebase_merge=false \
-  -F allow_auto_merge=true \
+  -F allow_auto_merge=false \
   -F delete_branch_on_merge=true >/dev/null
 echo "  done"
 
