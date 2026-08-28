@@ -6,24 +6,9 @@ import { BuzzMeter } from '@/components/BuzzMeter'
 import { DrinkSheet } from '@/components/DrinkSheet'
 import { VolumePicker } from '@/components/VolumePicker'
 import { DAILY_MAX_MG, formatMg, limitHeadline, limitStatus } from '@/lib/caffeine'
+import { osloClockNow } from '@/lib/format'
 import type { ActiveDrinkType } from '@/server/drinks'
 import type { UndoableDrink } from '@/server/drinks'
-
-/**
- * The current Oslo wall clock as `HH:MM`, for prefilling the time input.
- *
- * Formatted in the app's timezone rather than the browser's, so someone opening
- * the app from a conference abroad still sees — and logs against — the clock the
- * rest of the numbers are bucketed by.
- */
-function osloClockNow(): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Oslo',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(new Date())
-}
 
 const HEADLINE_TONE = {
   ok: 'text-oat',

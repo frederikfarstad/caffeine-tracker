@@ -19,6 +19,20 @@ export function formatOsloClock(instant: Date | number): string {
   return clockFormatter.format(instant)
 }
 
+/**
+ * The current Oslo wall clock as `HH:MM`, for prefilling a time input.
+ *
+ * Formatted in the app's timezone rather than the browser's, so someone opening
+ * the app from a conference abroad still sees — and logs against — the clock
+ * the rest of the numbers are bucketed by.
+ *
+ * Here rather than in a panel because both logging panels need it, and two
+ * copies of a timezone-formatting helper is how they start disagreeing.
+ */
+export function osloClockNow(): string {
+  return clockFormatter.format(new Date())
+}
+
 /** Compact axis label for a `YYYY-MM-DD` bucket: `26.08`, Norwegian order. */
 export function formatDayTick(bucket: string): string {
   const [, month, day] = bucket.split('-')

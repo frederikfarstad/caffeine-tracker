@@ -11,6 +11,12 @@ import {
   undoLastDrink,
   updateDrinkLog,
 } from '@/server/drinks'
+import {
+  deleteAlcoholLog,
+  logAlcoholDrink,
+  undoLastAlcoholDrink,
+  updateAlcoholLog,
+} from '@/server/alcohol'
 import { addDrinkType } from '@/server/drink-types'
 import { LATEST_PATCH_NOTE } from '@/lib/patch-notes'
 import { markPatchNoteSeen } from '@/server/settings'
@@ -252,4 +258,138 @@ export async function addDrinkTypeAction(
 
   refresh()
   return { error: null, notice: `Added ${parsed.data.name}. It's there for everyone now.` }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Party mode                                                                */
+/*                                                                           */
+/* Siblings of the caffeine actions rather than a `kind` parameter on them.   */
+/* They write to different tables and mean different things, and a flag would */
+/* put a branch inside the one action that must never write a beer into       */
+/* `drink_logs`.                                                              */
+/* -------------------------------------------------------------------------- */
+
+const logAlcoholSchema = z.object({
+  slug: z.string().min(1).max(64),
+  /** `HH:MM` from the form's time input, or absent for "right now". */
+  time: z.string().max(5).optional(),
+})
+
+/** Log one alcoholic drink, optionally at an earlier time today. */
+export async function logAlcoholAction(slug: string, time?: string): Promise<ActionResult> {
+  const member = await requireMember()
+
+  const parsed = logAlcoholSchema.safeParse({ slug, time })
+  if (!parsed.success) {
+    return { ok: false, message: "That drink isn't available." }
+  }
+
+  const when = resolveConsumedAt({ time: parsed.data.time })
+  if (!when.ok) {
+    return {
+      ok: false,
+      message:
+        when.reason === 'future-time'
+          ? "That time hasn't happened yet."
+          : 'Use a time like 21:15.',
+    }
+  }
+
+  const result = await logAlcoholDrink(db, {
+    userId: member.userId,
+    slug: parsed.data.slug,
+    consumedAt: when.consumedAt,
+  })
+
+  if (!result.ok) {
+    return { ok: false, message: "That drink isn't available any more." }
+  }
+
+  refresh()
+  return { ok: true, message: null }
+}
+
+/** Take back the most recent alcoholic drink, if it is still in the window. */
+export async function undoLastAlcoholAction(): Promise<ActionResult> {
+  const member = await requireMember()
+  const result = await undoLastAlcoholDrink(db, { userId: member.userId })
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      message:
+        result.reason === 'nothing-to-undo'
+          ? 'Nothing to undo yet.'
+          : 'That drink is too old to undo.',
+    }
+  }
+
+  refresh()
+  return { ok: true, message: null }
+}
+
+const editAlcoholSchema = z.object({
+  logId: z.number().int().positive(),
+  time: z.string().max(5),
+})
+
+/**
+ * Move one of the member's own alcohol logs to a different time.
+ *
+ * The log id comes from the client, so `updateAlcoholLog` scopes its query by
+ * user as well — that scope, not this action, is what stops one member reaching
+ * another's rows.
+ */
+export async function updateAlcoholLogAction(
+  logId: number,
+  time: string,
+): Promise<ActionResult> {
+  const member = await requireMember()
+
+  const parsed = editAlcoholSchema.safeParse({ logId, time })
+  if (!parsed.success) {
+    return { ok: false, message: "That edit doesn't look right." }
+  }
+
+  const when = resolveConsumedAt({ time: parsed.data.time })
+  if (!when.ok) {
+    return {
+      ok: false,
+      message:
+        when.reason === 'future-time'
+          ? "That time hasn't happened yet."
+          : 'Use a time like 21:15.',
+    }
+  }
+
+  const result = await updateAlcoholLog(db, {
+    userId: member.userId,
+    logId: parsed.data.logId,
+    consumedAt: when.consumedAt,
+  })
+
+  if (!result.ok) {
+    return { ok: false, message: "That drink isn't there any more." }
+  }
+
+  refresh()
+  return { ok: true, message: null }
+}
+
+/** Delete one of the member's own alcohol logs, however old. */
+export async function deleteAlcoholLogAction(logId: number): Promise<ActionResult> {
+  const member = await requireMember()
+
+  const parsed = z.number().int().positive().safeParse(logId)
+  if (!parsed.success) {
+    return { ok: false, message: "That drink isn't there any more." }
+  }
+
+  const result = await deleteAlcoholLog(db, { userId: member.userId, logId: parsed.data })
+  if (!result.ok) {
+    return { ok: false, message: "That drink isn't there any more." }
+  }
+
+  refresh()
+  return { ok: true, message: null }
 }
