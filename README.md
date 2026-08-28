@@ -24,7 +24,9 @@ Getting it running takes about 25 minutes and costs nothing — see
   Alcohol then gets the same treatment caffeine does — one-tap logging, a gauge,
   a curve, an editable list and its own leaderboard — modelled with Widmark
   rather than a half-life, because alcohol clears at a constant rate rather than
-  an exponential one. It never enters a caffeine statistic.
+  an exponential one. It never enters a caffeine statistic. From four on a
+  Friday until four on the Saturday the dashboard leads with it instead of with
+  coffee; the rest of the week it is the second half of the page.
 
 ## Stack
 
@@ -65,6 +67,7 @@ src/
   lib/caffeine.ts    EFSA reference values and limit states
   lib/alcohol.ts     Grams from volume and ABV, units, the 0.2‰ limit
   lib/blood-alcohol.ts  Widmark, simulated: zero-order elimination
+  lib/party-time.ts  When the dashboard leads with alcohol instead
   db/schema.ts       Drizzle tables and migrations
   db/rollup.ts       daily_totals rebuild and drift check
   server/auth.ts     Auth.js config, requireMember / requireAdmin

@@ -27,6 +27,7 @@ import {
   curveWindow as alcoholCurveWindow,
   drivingOutlook,
 } from '@/lib/blood-alcohol'
+import { isPartyTime } from '@/lib/party-time'
 import { nextLocalTimeAfter } from '@/lib/time'
 import { requireMember } from '@/server/auth'
 import {
@@ -107,6 +108,38 @@ function lastCall({
     value: formatOsloClock(deadline),
     detail: `Latest ${reference.name} before ${bedtimeLocal}`,
   }
+}
+
+/**
+ * The chrome that marks the second half of the page.
+ *
+ * Only the trailing section gets it. The leading one opens the page and needs
+ * no label to say what it is; the one below it needs a rule and a name so the
+ * change of subject reads as deliberate rather than abrupt. Which of the two
+ * that is depends on the day — see `lib/party-time.ts`.
+ */
+function TrailingSection({
+  id,
+  legend,
+  title,
+  children,
+}: {
+  id: string
+  legend: string
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="space-y-4 border-t border-hairline pt-6" aria-labelledby={id}>
+      <div className="space-y-1">
+        <p className="legend" id={id}>
+          {legend}
+        </p>
+        <h2 className="display text-2xl leading-tight tracking-tight text-foam">{title}</h2>
+      </div>
+      {children}
+    </section>
+  )
 }
 
 export default async function PersonalDashboard({
@@ -192,6 +225,19 @@ export default async function PersonalDashboard({
   })
   const bacNow = bacAt(alcoholDoses, now, member.bodyProfile)
 
+  /*
+   * Which half of the page leads.
+   *
+   * From four on a Friday afternoon until four on the Saturday morning the
+   * alcohol section goes first — `lib/party-time.ts` argues for those hours.
+   * It only ever reorders: both sections render either way, nothing is hidden,
+   * and none of it happens for a member who has not switched party mode on.
+   *
+   * Whichever section comes second carries the heading and the rule above it.
+   * The one that leads opens the page and needs neither.
+   */
+  const partyLeads = party && isPartyTime(now)
+
   // The member's own most-logged drink is the honest reference for "last call":
   // the answer depends on the size of the dose, so it should be the dose they
   // actually reach for.
@@ -203,7 +249,7 @@ export default async function PersonalDashboard({
     reference: favourites[0],
   })
 
-  return (
+  const caffeineBlock = (
     <>
       <LogDrinkPanel
         todayMg={today.totalMg}
@@ -296,61 +342,71 @@ export default async function PersonalDashboard({
           Nothing logged {PERIOD_TITLES[period]}. Tap a drink above the moment you pour one.
         </p>
       )}
+    </>
+  )
 
-      {party && (
-        <section
-          className="space-y-4 border-t border-hairline pt-6"
-          aria-labelledby="party-heading"
+  const partyBlock = (
+    <>
+      <PartyPanel
+        todayGrams={alcoholToday.totalGrams}
+        drinkCount={alcoholToday.drinkCount}
+        bac={bacNow}
+        profilePersonal={member.bodyProfile.personal}
+        drinkTypes={alcoholTypes}
+        undoable={undoableAlcohol}
+      />
+
+      <RecentAlcohol drinks={recentAlcohol} />
+
+      {alcoholDoses.length > 0 && (
+        <ChartFrame
+          legend="Permille · in your blood"
+          title="Blood alcohol tonight"
+          columns={['Blood alcohol (‰)', 'Measured or projected']}
+          rows={bacCurve
+            // Every sixth sample, for the same reason as the caffeine table:
+            // it is for reading, and ten-minute steps are not.
+            .filter((_, index) => index % 6 === 0)
+            .map((point) => ({
+              label: formatOsloClock(point.at),
+              values: [point.bac.toFixed(2), point.projected ? 'Projected' : 'Measured'],
+            }))}
+          footnote={
+            <>
+              {soberFootnote(drivingOutlook(alcoholDoses, now, member.bodyProfile))} Solid to now,
+              dashed ahead. Modelled on{' '}
+              {member.bodyProfile.personal
+                ? `${member.bodyProfile.weightKg} kg`
+                : 'an average 80 kg adult'}{' '}
+              and a constant 0.15 ‰ an hour, neither of which knows what you actually poured or
+              whether you had dinner.
+            </>
+          }
         >
-          <div className="space-y-1">
-            <p className="legend" id="party-heading">
-              Party mode
-            </p>
-            <h2 className="display text-2xl leading-tight tracking-tight text-foam">
-              The other kind of buzz
-            </h2>
-          </div>
+          <BloodAlcoholChart data={bacCurve} now={now} />
+        </ChartFrame>
+      )}
+    </>
+  )
 
-          <PartyPanel
-            todayGrams={alcoholToday.totalGrams}
-            drinkCount={alcoholToday.drinkCount}
-            bac={bacNow}
-            profilePersonal={member.bodyProfile.personal}
-            drinkTypes={alcoholTypes}
-            undoable={undoableAlcohol}
-          />
-
-          <RecentAlcohol drinks={recentAlcohol} />
-
-          {alcoholDoses.length > 0 && (
-            <ChartFrame
-              legend="Permille · in your blood"
-              title="Blood alcohol tonight"
-              columns={['Blood alcohol (‰)', 'Measured or projected']}
-              rows={bacCurve
-                // Every sixth sample, for the same reason as the caffeine
-                // table: it is for reading, and ten-minute steps are not.
-                .filter((_, index) => index % 6 === 0)
-                .map((point) => ({
-                  label: formatOsloClock(point.at),
-                  values: [point.bac.toFixed(2), point.projected ? 'Projected' : 'Measured'],
-                }))}
-              footnote={
-                <>
-                  {soberFootnote(drivingOutlook(alcoholDoses, now, member.bodyProfile))} Solid to
-                  now, dashed ahead. Modelled on{' '}
-                  {member.bodyProfile.personal
-                    ? `${member.bodyProfile.weightKg} kg`
-                    : 'an average 80 kg adult'}{' '}
-                  and a constant 0.15 ‰ an hour, neither of which knows what you actually poured
-                  or whether you had dinner.
-                </>
-              }
-            >
-              <BloodAlcoholChart data={bacCurve} now={now} />
-            </ChartFrame>
+  return (
+    <>
+      {partyLeads ? (
+        <>
+          {partyBlock}
+          <TrailingSection id="caffeine-heading" legend="Caffeine" title="Still on the coffee">
+            {caffeineBlock}
+          </TrailingSection>
+        </>
+      ) : (
+        <>
+          {caffeineBlock}
+          {party && (
+            <TrailingSection id="party-heading" legend="Party mode" title="The other kind of buzz">
+              {partyBlock}
+            </TrailingSection>
           )}
-        </section>
+        </>
       )}
 
       <PartyModeToggle on={party} />
