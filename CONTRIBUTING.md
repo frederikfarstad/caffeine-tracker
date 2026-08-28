@@ -157,11 +157,28 @@ For a maintainer wiring this up on a fresh clone or a fresh fork:
 ./scripts/protect-main.sh
 ```
 
-**Secrets.** Create a `production` environment on the repository and add
-`TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` to it — the environment rather than
-the repository, so nothing but a push to `main` can reach them. Optionally add
-`ANTHROPIC_API_KEY` as a repository secret to switch on the agent reviewer.
-[SETUP.md](SETUP.md) says where the Turso values come from.
+**Secrets.** Whatever the app has in Vercel, GitHub Actions cannot see: the two
+are separate stores, and the deploy workflow reads GitHub's. Exactly two values
+have to exist on both sides, because the migration job is the only thing here
+that touches the database:
+
+```bash
+gh secret set TURSO_DATABASE_URL --env Production
+gh secret set TURSO_AUTH_TOKEN --env Production
+```
+
+The environment rather than the repository, so nothing but a push to `main` can
+reach them. `Production` is the environment Vercel's integration already
+created; the workflow says `production` and GitHub matches the name
+case-insensitively.
+
+The other variables — `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`,
+`TEAM_JOIN_CODE`, `ADMIN_EMAILS` — stay in Vercel alone. CI builds on
+placeholders and never needs the real ones. [SETUP.md](SETUP.md) says where the
+Turso values come from if you no longer have them.
+
+Optionally add `ANTHROPIC_API_KEY` as a repository secret to switch on the
+agent reviewer.
 
 ## The checks
 
