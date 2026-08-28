@@ -19,8 +19,8 @@ echo "Branch:     $BRANCH"
 echo
 
 # The status checks that have to pass. These are job names from
-# .github/workflows/ci.yml — keep the two in step. "agent review" is
-# deliberately absent: its verdict is advisory, and it cannot run on a fork.
+# .github/workflows/ci.yml — keep the two in step. These four are the only
+# thing that reads the diff: there is no agent reviewer, by choice.
 read -r -d '' PROTECTION <<'JSON' || true
 {
   "required_status_checks": {
@@ -82,4 +82,4 @@ gh api "repos/$REPO/branches/$BRANCH/protection" --jq '{
 echo
 echo "Still to do by hand (they need values, not settings):"
 echo "  1. Create a 'production' environment and add TURSO_DATABASE_URL and TURSO_AUTH_TOKEN to it."
-echo "  2. Optional: add an ANTHROPIC_API_KEY repository secret to turn on the agent reviewer."
+echo "  2. Nothing else is needed: no reviewer secret, and no approvals to configure."

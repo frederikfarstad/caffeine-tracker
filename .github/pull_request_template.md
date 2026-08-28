@@ -1,16 +1,21 @@
 ## What changed
 
-<!-- One paragraph. Written for the next agent to read this file, not for a
-     human reviewer — there isn't one. -->
+<!-- Describe the change in BEHAVIOUR, not in code. A person reads this and
+     decides whether to merge without opening the diff, so "undo now works on a
+     drink logged yesterday" is useful and "refactored drinks.ts" is not.
+     Anything you leave out here is merged unexamined. -->
 
 ## Why
 
-<!-- The reason the change exists. If it came from an issue, link it. -->
+<!-- The reason the change should exist. The reader cannot check your reasoning
+     against the diff, so an argument made only in the code has not been made.
+     If it came from an issue, link it. -->
 
 ## How it was verified
 
-<!-- CI runs lint, typecheck, the schema check, the tests and a build. Say what
-     you did beyond that: which tests you added, and what you exercised by hand. -->
+<!-- CI runs lint, typecheck, the schema check, the tests and a build — that is
+     the only thing that reads the diff. Say what you did beyond it: which tests
+     you added, and what you exercised by hand. -->
 
 - [ ] `npm test` passes locally
 - [ ] `npm run typecheck` and `npm run lint` pass locally
