@@ -6,10 +6,9 @@ import type { MetadataRoute } from 'next'
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Buzz — how caffeinated are Ovio and Teoria?',
+    name: 'Buzz — how caffeinated is Fleks?',
     short_name: 'Buzz',
-    description:
-      'Log every coffee and energy drink, and see who is running Ovio and Teoria today.',
+    description: 'Log every coffee and energy drink, and see who is running Fleks today.',
     start_url: '/',
     display: 'standalone',
     background_color: '#150f0d',

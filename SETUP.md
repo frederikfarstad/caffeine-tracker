@@ -221,5 +221,5 @@ going quiet, not a surprise bill.
 
 **One licensing note.** Vercel's Hobby plan is for personal, non-commercial use.
 A free internal tracker with no ads or payments sits within the spirit of that,
-but if Ovio or Teoria treats this as a company tool, the honest answer is Pro at
+but if Fleks treats this as a company tool, the honest answer is Pro at
 $20/month.

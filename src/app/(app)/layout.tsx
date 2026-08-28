@@ -32,13 +32,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="mx-auto flex min-h-dvh max-w-4xl flex-col px-4 pb-16 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
-        {/*
-         * The wordmark carries one name, so the two teams sit above it as an
-         * eyebrow rather than inside it — "oviobuzz" cannot be made to include
-         * Teoria without reading as a third team.
-         */}
         <Link href="/" className="block">
-          <span className="legend block text-[0.5625rem] leading-none">Ovio · Teoria</span>
+          <span className="legend block text-[0.5625rem] leading-none">Fleks</span>
           <span className="display text-2xl leading-none tracking-tight text-foam">
             buzz<span className="text-crema">.</span>
           </span>

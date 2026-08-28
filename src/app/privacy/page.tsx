@@ -14,8 +14,8 @@ export default function PrivacyPage() {
         <p className="legend">Buzz</p>
         <h1 className="display text-4xl leading-tight tracking-tight text-foam">Privacy</h1>
         <p className="text-sm leading-relaxed text-oat">
-          Buzz is an internal caffeine leaderboard for the Ovio and Teoria teams. It is not a
-          commercial product and there is nothing clever going on with your data.
+          Buzz is an internal caffeine leaderboard for the Fleks team. It is not a commercial
+          product and there is nothing clever going on with your data.
         </p>
       </div>
 

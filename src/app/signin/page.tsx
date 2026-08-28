@@ -14,12 +14,12 @@ export default async function SignInPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-10 px-6 py-16">
       <div className="space-y-3">
-        <p className="legend">Ovio · Teoria · caffeine tracker</p>
+        <p className="legend">Fleks · caffeine tracker</p>
         <h1 className="display text-6xl leading-none tracking-tight text-foam">
           buzz<span className="text-crema">.</span>
         </h1>
         <p className="max-w-xs text-sm leading-relaxed text-oat">
-          Every cup. Every can. One leaderboard. Settle who is actually running Ovio and Teoria.
+          Every cup. Every can. One leaderboard. Settle who is actually running Fleks.
         </p>
       </div>
 

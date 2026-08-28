@@ -1,6 +1,6 @@
 # Buzz
 
-A caffeine tracker for the Ovio and Teoria teams. Log every coffee and energy drink in one
+A caffeine tracker for the Fleks team. Log every coffee and energy drink in one
 tap, then argue about the leaderboard.
 
 Getting it running takes about 25 minutes and costs nothing — see

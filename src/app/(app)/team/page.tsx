@@ -58,7 +58,7 @@ export default async function TeamDashboard({
         <div>
           <p className="legend">Everyone combined</p>
           <h1 className="display text-3xl leading-tight tracking-tight text-foam">
-            Ovio and Teoria, all of it
+            Fleks, all of it
           </h1>
         </div>
         <PeriodTabs active={period} basePath="/team" />

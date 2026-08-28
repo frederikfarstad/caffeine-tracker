@@ -30,9 +30,8 @@ const jetbrains = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Buzz — how caffeinated are Ovio and Teoria?',
-  description:
-    'Log every coffee and energy drink, and see who is running Ovio and Teoria today.',
+  title: 'Buzz — how caffeinated is Fleks?',
+  description: 'Log every coffee and energy drink, and see who is running Fleks today.',
   /*
    * Without this iOS opens the home-screen shortcut in a Safari tab with its
    * chrome, rather than as a standalone app. The manifest's `display` field
