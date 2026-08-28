@@ -12,6 +12,15 @@ const NAV = [
 const ADMIN_NAV = { href: '/admin', label: 'Drinks' }
 
 /**
+ * Shown only to members with party mode on.
+ *
+ * The page checks the same flag itself — a link that is not rendered is not an
+ * access control — but keeping it out of the nav is what stops party mode being
+ * a permanent advertisement to everyone who never asked for it.
+ */
+const PARTY_NAV = { href: '/party', label: 'Party' }
+
+/**
  * The shell around every signed-in page.
  *
  * `requireMember()` runs here so the join gate is enforced once, for the whole
@@ -40,7 +49,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </Link>
 
         <nav aria-label="Sections" className="order-3 flex w-full gap-1 sm:order-2 sm:w-auto">
-          {(member.isAdmin ? [...NAV, ADMIN_NAV] : NAV).map((item) => (
+          {[
+            ...NAV,
+            ...(member.partyMode ? [PARTY_NAV] : []),
+            ...(member.isAdmin ? [ADMIN_NAV] : []),
+          ].map((item) => (
             <Link
               key={item.href}
               href={item.href}

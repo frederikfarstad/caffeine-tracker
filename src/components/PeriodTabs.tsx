@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { Period } from '@/lib/time'
+import { PARTY_PERIODS, type PartyPeriod, type Period } from '@/lib/time'
 
 const LABELS: Record<Period, string> = {
   today: 'Today',
@@ -15,11 +15,24 @@ const ORDER: Period[] = ['today', 'week', 'month', 'all']
  *
  * Plain links rather than client-side state: the period belongs in the URL so a
  * view can be shared, bookmarked and reloaded.
+ *
+ * `periods` narrows the strip for party mode, which has no all-time figures to
+ * show. That is a real constraint rather than a layout choice — see
+ * {@link PartyPeriod} — so the caller passes the set it can actually answer
+ * instead of this component hiding a tab that would otherwise work.
  */
-export function PeriodTabs({ active, basePath }: { active: Period; basePath: string }) {
+export function PeriodTabs({
+  active,
+  basePath,
+  periods = ORDER,
+}: {
+  active: Period
+  basePath: string
+  periods?: readonly Period[]
+}) {
   return (
     <nav aria-label="Period" className="flex flex-wrap gap-1">
-      {ORDER.map((period) => {
+      {periods.map((period) => {
         const isActive = period === active
         return (
           <Link
@@ -44,4 +57,17 @@ export function PeriodTabs({ active, basePath }: { active: Period; basePath: str
 export function parsePeriod(value: string | string[] | undefined): Period {
   const candidate = Array.isArray(value) ? value[0] : value
   return ORDER.includes(candidate as Period) ? (candidate as Period) : 'today'
+}
+
+/**
+ * The same, for party mode, where `all` is not answerable.
+ *
+ * `?period=all` falls back to today rather than erroring: a hand-typed or stale
+ * URL should show something, and today is the cheapest honest answer.
+ */
+export function parsePartyPeriod(value: string | string[] | undefined): PartyPeriod {
+  const candidate = Array.isArray(value) ? value[0] : value
+  return PARTY_PERIODS.includes(candidate as PartyPeriod)
+    ? (candidate as PartyPeriod)
+    : 'today'
 }
