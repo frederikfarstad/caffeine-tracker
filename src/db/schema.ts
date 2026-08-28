@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm'
 import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { AlcoholCategory } from '@/lib/alcohol'
+import type { BadgeId } from '@/lib/badges'
 import type { DrinkCategory } from '@/lib/caffeine'
 
 /* -------------------------------------------------------------------------- */
@@ -239,6 +240,35 @@ export const dailyTotals = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.userId, table.localDate] }),
     index('daily_totals_date_idx').on(table.localDate),
+  ],
+)
+
+/**
+ * Which badges each member has, and when they got them.
+ *
+ * Derived data, like `daily_totals`: `drink_logs` remains authoritative and
+ * this table can be rebuilt from it at any time by `db/rebuild-badges.ts`.
+ * That is only possible because every predicate in `lib/badges.ts` is a pure
+ * function of the logs — a badge that depended on when the code ran could never
+ * be reproduced, and would quietly become a second source of truth.
+ *
+ * `earned_at` is the `created_at` of the log that qualified them, not the
+ * `consumed_at`. A drink backdated to breakfast is still earned at the moment
+ * it was logged, which is what makes replaying in write order exact.
+ */
+export const earnedBadges = sqliteTable(
+  'earned_badges',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    badgeId: text('badge_id').$type<BadgeId>().notNull(),
+    earnedAt: integer('earned_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.badgeId] }),
+    // "Who else has this one", for the leaderboard.
+    index('earned_badges_badge_idx').on(table.badgeId),
   ],
 )
 
