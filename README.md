@@ -20,6 +20,11 @@ Getting it running takes about 25 minutes and costs nothing — see
   actually peaks, and coffee against energy drinks.
 - **Editable drink types.** Admins can tune caffeine estimates or add drinks.
   Edits apply to new logs only — history never moves.
+- **Party mode.** Off by default, and a button on the dashboard switches it on.
+  Alcohol then gets the same treatment caffeine does — one-tap logging, a gauge,
+  a curve, an editable list and its own leaderboard — modelled with Widmark
+  rather than a half-life, because alcohol clears at a constant rate rather than
+  an exponential one. It never enters a caffeine statistic.
 
 ## Stack
 
@@ -58,17 +63,20 @@ npm run build
 src/
   lib/time.ts        Europe/Oslo bucketing, periods, DST handling
   lib/caffeine.ts    EFSA reference values and limit states
+  lib/alcohol.ts     Grams from volume and ABV, units, the 0.2‰ limit
+  lib/blood-alcohol.ts  Widmark, simulated: zero-order elimination
   db/schema.ts       Drizzle tables and migrations
   db/rollup.ts       daily_totals rebuild and drift check
   server/auth.ts     Auth.js config, requireMember / requireAdmin
   server/membership.ts  Join-code verification and rate limiting
   server/drinks.ts   Logging and undo
   server/stats.ts    Every statistic the UI reads
+  server/alcohol.ts  Party mode, deliberately without a rollup
   app/(app)/         The signed-in pages
   components/        UI, including the buzz meter and charts
 ```
 
-Four decisions worth knowing before you change anything:
+Five decisions worth knowing before you change anything:
 
 **Membership is the access grant.** A signed-in Google account with no row in
 `members` hasn't entered the team code yet, so "is this person allowed in?" is
@@ -88,19 +96,33 @@ scanned, so day-or-coarser questions read one row per person per day instead of
 every drink ever logged. `drink_logs` stays authoritative;
 `npm run db:rebuild-rollup` regenerates the rollup and reports any drift.
 
+**Alcohol is a parallel path, not a drink category.** Sharing `drink_logs` would
+put a beer into every aggregate in `stats.ts` as a zero-milligram row — the
+drink count, the rank, the streak, the category split. Two tables that never
+meet is cheaper than a filter on every query. There is no `daily_totals`
+equivalent either, and the price of that is paid in the UI rather than hidden:
+**party mode has no all-time period**, because an open-ended range without a
+rollup is the one query that would grow without bound. `PartyPeriod` excludes it
+at the type level.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-145 tests. The ones that matter most:
+430 tests. The ones that matter most:
 
 - `lib/time.test.ts` — both Oslo DST transitions, and the nightly window where
   the UTC date and the Oslo date disagree.
 - `server/stats.test.ts` — every aggregate against seeded fixtures.
 - `server/drinks.test.ts` — the caffeine snapshot, undo authorization, and that
   the rollup never drifts from the logs.
+- `lib/blood-alcohol.test.ts` — that elimination is linear and stops at exactly
+  zero, that superposition therefore does *not* hold, and that the curve reads
+  the same at an instant however early its window starts.
+- `server/alcohol.test.ts` — that logging, editing, undoing and deleting a drink
+  leave `drink_logs` and `daily_totals` byte-for-byte unchanged.
 
 Integration tests run against real libSQL database files, so they exercise the
 same engine as production with no container and no network. They use files

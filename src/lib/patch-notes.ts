@@ -20,6 +20,20 @@ export type PatchNote = {
 }
 
 export const PATCH_NOTES: PatchNote[] = [
+  {
+    id: '2026-08-28',
+    title: 'Fleks, and a party mode',
+    items: [
+      'Buzz belongs to Fleks now, and the name at the top of the page says so.',
+      'There is a party mode. Switch it on at the bottom of your dashboard and you get a second set of buttons — beer, wine, spirits, cider — with a gauge and a curve for what is in your blood rather than what is in your stomach, and a leaderboard of its own.',
+      'It is modelled on Widmark, which is the arithmetic every breathalyser argument is ultimately about, and it will be wrong. It does not know what you actually poured, whether you had dinner, or how your liver is feeling today. It is never a reason to decide you can drive.',
+      'Blood alcohol depends on the size of the body it is in, where milligrams of caffeine do not. Settings will take your weight if you want the estimate to be about you rather than about an average 80 kg adult. Both fields are optional, and the readout says which one it used.',
+      'A tap makes the unit count jump and leaves the needle where it was. That is not a bug — a drink takes half an hour or so to reach your blood, and the curve is drawing that rather than pretending otherwise.',
+      'You can fix a drink after logging it: the list under the buttons will change its time or delete it, long after the ten-minute undo has gone. It keeps showing last night after midnight, because an evening does not end when the date does.',
+      'The party leaderboard goes by day, week and month, and stops there. A running total of everything anyone has ever drunk is a different sort of number, and not one a scoreboard should be keeping.',
+      'None of it touches caffeine. A beer is not a drink as far as your rank, your streak or the team charts are concerned.',
+    ],
+  },
   /*
    * The first note, so it covers everything shipped since there was anything to
    * read. Every existing member is stored as having seen nothing, and

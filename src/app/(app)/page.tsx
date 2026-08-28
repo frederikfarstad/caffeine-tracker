@@ -1,8 +1,12 @@
 import Link from 'next/link'
+import { BloodAlcoholChart } from '@/components/charts/BloodAlcoholChart'
 import { BloodCaffeineChart } from '@/components/charts/BloodCaffeineChart'
 import { ConsumptionChart } from '@/components/charts/ConsumptionChart'
 import { ChartFrame } from '@/components/charts/ChartFrame'
 import { LogDrinkPanel } from '@/components/LogDrinkPanel'
+import { PartyModeToggle } from '@/components/PartyModeToggle'
+import { PartyPanel } from '@/components/PartyPanel'
+import { RecentAlcohol } from '@/components/RecentAlcohol'
 import { RecentDrinks } from '@/components/RecentDrinks'
 import { PeriodTabs, parsePeriod } from '@/components/PeriodTabs'
 import { StatTile } from '@/components/StatTile'
@@ -17,8 +21,21 @@ import {
   sleepOutlook,
   type Profile,
 } from '@/lib/blood-caffeine'
+import {
+  bacAt,
+  bloodAlcoholCurve,
+  curveWindow as alcoholCurveWindow,
+  drivingOutlook,
+} from '@/lib/blood-alcohol'
 import { nextLocalTimeAfter } from '@/lib/time'
 import { requireMember } from '@/server/auth'
+import {
+  getUndoableAlcoholDrink,
+  getUserAlcoholEvents,
+  getUserAlcoholToday,
+  getUserRecentAlcohol,
+  listActiveAlcoholTypes,
+} from '@/server/alcohol'
 import { getUndoableDrink, getUserRecentDrinks, listActiveDrinkTypes } from '@/server/drinks'
 import {
   getUserFavouriteDrinkTypes,
@@ -37,6 +54,18 @@ function outlookFootnote(outlook: ReturnType<typeof sleepOutlook>, thresholdMg: 
       return `Down under ${thresholdMg} mg around ${formatOsloClock(outlook.at)}.`
     case 'not-tonight':
       return `Still over ${thresholdMg} mg twelve hours from now.`
+  }
+}
+
+/** The sentence under the alcohol curve, which is the point of that chart. */
+function soberFootnote(outlook: ReturnType<typeof drivingOutlook>): string {
+  switch (outlook.kind) {
+    case 'clear':
+      return 'Nothing on board on this estimate — which is still an estimate.'
+    case 'clears':
+      return `Down to nothing around ${formatOsloClock(outlook.at)}, which is hours later than you will feel fine. That gap is the reason to draw this at all.`
+    case 'not-tonight':
+      return 'Still not clear twelve hours from now.'
   }
 }
 
@@ -96,19 +125,51 @@ export default async function PersonalDashboard({
   const now = new Date()
   const profile = member.profile
   const lookback = curveWindow([], now, profile).from
+  const alcoholLookback = alcoholCurveWindow([], now, member.bodyProfile).from
 
-  const [drinkTypes, favourites, undoable, today, summary, series, streak, intake, recent] =
-    await Promise.all([
-      listActiveDrinkTypes(db),
-      getUserFavouriteDrinkTypes(db, member.userId, { limit: 4, now }),
-      getUndoableDrink(db, { userId: member.userId }),
-      getUserSummary(db, member.userId, 'today'),
-      getUserSummary(db, member.userId, period),
-      getUserTimeSeries(db, member.userId, period),
-      getUserStreak(db, member.userId),
-      getUserIntakeEvents(db, member.userId, { from: lookback, now }),
-      getUserRecentDrinks(db, member.userId, { now, days: historyDays }),
-    ])
+  /*
+   * Party mode gates the queries, not only the markup. Somebody who has never
+   * switched it on should pay nothing for it, and `Promise.resolve` keeps that
+   * decision in one place rather than splitting this into two awaited blocks
+   * and serialising two round trips.
+   */
+  const party = member.partyMode
+
+  const [
+    drinkTypes,
+    favourites,
+    undoable,
+    today,
+    summary,
+    series,
+    streak,
+    intake,
+    recent,
+    alcoholTypes,
+    undoableAlcohol,
+    alcoholToday,
+    alcoholEvents,
+    recentAlcohol,
+  ] = await Promise.all([
+    listActiveDrinkTypes(db),
+    getUserFavouriteDrinkTypes(db, member.userId, { limit: 4, now }),
+    getUndoableDrink(db, { userId: member.userId }),
+    getUserSummary(db, member.userId, 'today'),
+    getUserSummary(db, member.userId, period),
+    getUserTimeSeries(db, member.userId, period),
+    getUserStreak(db, member.userId),
+    getUserIntakeEvents(db, member.userId, { from: lookback, now }),
+    getUserRecentDrinks(db, member.userId, { now, days: historyDays }),
+    party ? listActiveAlcoholTypes(db) : Promise.resolve([]),
+    party ? getUndoableAlcoholDrink(db, { userId: member.userId }) : Promise.resolve(null),
+    party
+      ? getUserAlcoholToday(db, member.userId, { now })
+      : Promise.resolve({ totalGrams: 0, drinkCount: 0 }),
+    party
+      ? getUserAlcoholEvents(db, member.userId, { from: alcoholLookback, now })
+      : Promise.resolve([]),
+    party ? getUserRecentAlcohol(db, member.userId, { now }) : Promise.resolve([]),
+  ])
 
   const hasHistory = series.some((point) => point.mg > 0)
 
@@ -116,6 +177,20 @@ export default async function PersonalDashboard({
   const bounds = curveWindow(doses, now, profile)
   const curve = bloodCaffeineCurve(doses, { ...bounds, now, profile })
   const inSystemMg = bodyLoadAt(doses, now, profile)
+
+  // Party mode's own curve, off the same single `now` as the caffeine one, so
+  // the window, the reading and the "now" rule cannot disagree.
+  const alcoholDoses = alcoholEvents.map((event) => ({
+    consumedAt: event.consumedAt,
+    grams: event.alcoholGrams,
+  }))
+  const alcoholBounds = alcoholCurveWindow(alcoholDoses, now, member.bodyProfile)
+  const bacCurve = bloodAlcoholCurve(alcoholDoses, {
+    ...alcoholBounds,
+    now,
+    profile: member.bodyProfile,
+  })
+  const bacNow = bacAt(alcoholDoses, now, member.bodyProfile)
 
   // The member's own most-logged drink is the honest reference for "last call":
   // the answer depends on the size of the dose, so it should be the dose they
@@ -221,6 +296,64 @@ export default async function PersonalDashboard({
           Nothing logged {PERIOD_TITLES[period]}. Tap a drink above the moment you pour one.
         </p>
       )}
+
+      {party && (
+        <section
+          className="space-y-4 border-t border-hairline pt-6"
+          aria-labelledby="party-heading"
+        >
+          <div className="space-y-1">
+            <p className="legend" id="party-heading">
+              Party mode
+            </p>
+            <h2 className="display text-2xl leading-tight tracking-tight text-foam">
+              The other kind of buzz
+            </h2>
+          </div>
+
+          <PartyPanel
+            todayGrams={alcoholToday.totalGrams}
+            drinkCount={alcoholToday.drinkCount}
+            bac={bacNow}
+            profilePersonal={member.bodyProfile.personal}
+            drinkTypes={alcoholTypes}
+            undoable={undoableAlcohol}
+          />
+
+          <RecentAlcohol drinks={recentAlcohol} />
+
+          {alcoholDoses.length > 0 && (
+            <ChartFrame
+              legend="Permille · in your blood"
+              title="Blood alcohol tonight"
+              columns={['Blood alcohol (‰)', 'Measured or projected']}
+              rows={bacCurve
+                // Every sixth sample, for the same reason as the caffeine
+                // table: it is for reading, and ten-minute steps are not.
+                .filter((_, index) => index % 6 === 0)
+                .map((point) => ({
+                  label: formatOsloClock(point.at),
+                  values: [point.bac.toFixed(2), point.projected ? 'Projected' : 'Measured'],
+                }))}
+              footnote={
+                <>
+                  {soberFootnote(drivingOutlook(alcoholDoses, now, member.bodyProfile))} Solid to
+                  now, dashed ahead. Modelled on{' '}
+                  {member.bodyProfile.personal
+                    ? `${member.bodyProfile.weightKg} kg`
+                    : 'an average 80 kg adult'}{' '}
+                  and a constant 0.15 ‰ an hour, neither of which knows what you actually poured
+                  or whether you had dinner.
+                </>
+              }
+            >
+              <BloodAlcoholChart data={bacCurve} now={now} />
+            </ChartFrame>
+          )}
+        </section>
+      )}
+
+      <PartyModeToggle on={party} />
     </>
   )
 }

@@ -28,7 +28,14 @@ import {
  * "at maximum", where this one shows how far past you are.
  */
 const SCALE_MAX = SCALE_MAX_PERMILLE
-const TICK_STEP = 0.2
+/**
+ * Tenths, and labels every half.
+ *
+ * The label step has to be a whole multiple of the tick step or the labelled
+ * values are simply never generated — at a 0.2 tick step the dial silently
+ * came out labelled 0, 1 and 2 only, which is not what 0.5 was asking for.
+ */
+const TICK_STEP = 0.1
 const LABEL_STEP = 0.5
 
 const CX = 120
@@ -126,7 +133,14 @@ export function BacMeter({ bac }: { bac: number }) {
         opacity="0.85"
       />
 
-      {/* The limit itself, drawn across the full dial depth so it reads as a line. */}
+      {/*
+       * The limit itself: a full-depth line and its own label.
+       *
+       * Labelled separately rather than left to the tick loop, because 0.2 is
+       * not a multiple of the label step and this is the one value on the dial
+       * a reader might actually be looking for. An unlabelled red mark asks
+       * them to count ticks.
+       */}
       <line
         x1={pointAt(angleFor(DRIVING_LIMIT_PERMILLE), DIAL_RADIUS + 2).x}
         y1={pointAt(angleFor(DRIVING_LIMIT_PERMILLE), DIAL_RADIUS + 2).y}
@@ -135,6 +149,17 @@ export function BacMeter({ bac }: { bac: number }) {
         stroke="var(--color-scald)"
         strokeWidth="2"
       />
+      <text
+        x={pointAt(angleFor(DRIVING_LIMIT_PERMILLE), DIAL_RADIUS + 13).x}
+        y={pointAt(angleFor(DRIVING_LIMIT_PERMILLE), DIAL_RADIUS + 13).y}
+        fill="var(--color-scald)"
+        fontFamily="var(--font-gauge)"
+        fontSize="9"
+        textAnchor="middle"
+        dominantBaseline="middle"
+      >
+        0.2
+      </text>
 
       {ticks.map((tick) => (
         <g key={tick.value}>
