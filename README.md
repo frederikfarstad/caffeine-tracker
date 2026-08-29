@@ -161,9 +161,9 @@ repository; an unresolved comment thread is the human veto instead, and admins
 can still push when the building is on fire. `scripts/protect-main.sh` sets all
 of this, and is idempotent.
 
-An agent reviewer reads each diff against the five decisions above, if the
-repository has an `ANTHROPIC_API_KEY` secret. Its verdict is advisory — the
-checks are the gate.
+Nothing else reads the diff — no human, and no agent reviewer. A person reads
+the pull request description, decides whether the change should exist, and
+merges. Write the description accordingly.
 
 ## How it deploys
 
