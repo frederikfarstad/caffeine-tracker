@@ -75,6 +75,7 @@ src/
   lib/blood-alcohol.ts  Widmark, simulated: zero-order elimination
   lib/party-time.ts  When the dashboard leads with alcohol instead
   lib/badges.ts      Badge predicates, all pure functions of the logs
+  lib/wrapped.ts     Month keys, ranges and names
   db/schema.ts       Drizzle tables and migrations
   db/rollup.ts       daily_totals rebuild and drift check
   server/auth.ts     Auth.js config, requireMember / requireAdmin
@@ -83,6 +84,7 @@ src/
   server/stats.ts    Every statistic the UI reads
   server/alcohol.ts  Party mode, deliberately without a rollup
   server/badges.ts   Awarding, revoking, and the replay that rebuilds them
+  server/wrapped.ts  One member's month, assembled from the rollup
   app/(app)/         The signed-in pages
   components/        UI, including the buzz meter and charts
 ```
@@ -130,7 +132,7 @@ at the type level.
 npm test
 ```
 
-500 tests. The ones that matter most:
+535 tests. The ones that matter most:
 
 - `lib/time.test.ts` — both Oslo DST transitions, and the nightly window where
   the UTC date and the Oslo date disagree.
@@ -144,6 +146,8 @@ npm test
   leave `drink_logs` and `daily_totals` byte-for-byte unchanged.
 - `server/badges.test.ts` — that a rebuild reproduces exactly what awarding
   produced, and that undoing a drink takes back the badge it earned.
+- `server/wrapped.test.ts` — that a month stops at its own edges: no drink from
+  the next one, and no streak running past the last day.
 
 Integration tests run against real libSQL database files, so they exercise the
 same engine as production with no container and no network. They use files

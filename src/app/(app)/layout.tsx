@@ -1,7 +1,12 @@
 import Link from 'next/link'
 import { PatchNotesDialog } from '@/components/PatchNotesDialog'
+import { WrappedDialog } from '@/components/WrappedDialog'
+import { db } from '@/db'
 import { unseenPatchNotes } from '@/lib/patch-notes'
+import { localDateOf } from '@/lib/time'
+import { monthOf, previousMonth } from '@/lib/wrapped'
 import { requireMember, signOut } from '@/server/auth'
+import { getWrapped } from '@/server/wrapped'
 
 const NAV = [
   { href: '/', label: 'Me' },
@@ -32,6 +37,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Decided on the server, so the dialog is either in the markup or it isn't —
   // no mounting one and then closing it on the client.
   const unseen = unseenPatchNotes(member.lastSeenPatchNote)
+
+  /*
+   * Last month's wrapped, if they have not seen it. Decided here rather than on
+   * the client, like the patch notes, so the dialog is either in the markup or
+   * it is not — no mounting one and then closing it on the client.
+   *
+   * `getWrapped` returns null for a member who logged nothing that month, which
+   * is what stops somebody who joined last week being shown an empty
+   * celebration of a month they were not here for. The marker check comes first
+   * so that a caught-up member costs no query at all.
+   */
+  const lastMonth = previousMonth(monthOf(localDateOf(new Date())))
+  const wrapped =
+    member.lastSeenWrapped === null || member.lastSeenWrapped < lastMonth
+      ? await getWrapped(db, member.userId, lastMonth)
+      : null
 
   async function signOutAction() {
     'use server'
@@ -96,6 +117,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {unseen.length > 0 && (
         <PatchNotesDialog notes={unseen} seen={member.lastSeenPatchNote} />
       )}
+
+      {/*
+       * Never both at once. Two modals stacked on arrival is a poor greeting,
+       * and the wrapped keeps: it stays unseen and appears on the next visit.
+       */}
+      {unseen.length === 0 && wrapped && <WrappedDialog wrapped={wrapped} />}
     </div>
   )
 }
