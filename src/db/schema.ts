@@ -105,6 +105,15 @@ export const members = sqliteTable('members', {
    * follow the account across devices instead of firing once per browser.
    */
   lastSeenPatchNote: text('last_seen_patch_note'),
+  /**
+   * The newest monthly wrapped this person has seen, `YYYY-MM`, or null.
+   *
+   * Exactly the arrangement above, and for the same reason: server-side so the
+   * summary follows the account across devices instead of firing once per
+   * browser. Null for anyone who predates the feature, which the firing rule
+   * handles by also requiring the month to have data for them.
+   */
+  lastSeenWrapped: text('last_seen_wrapped'),
 
   /* ---------------------------------------------------------------------- */
   /* Party mode. All optional, all off or absent by default, so an untouched */

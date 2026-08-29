@@ -276,7 +276,20 @@ export default async function PersonalDashboard({
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <p className="legend">Your intake</p>
-        <PeriodTabs active={period} basePath="/" />
+        <div className="flex items-center gap-3">
+          {/*
+           * A link rather than a nav pill. The layout already argues that a
+           * fifth pill wraps the bar to two rows on a phone, and that has not
+           * stopped being true.
+           */}
+          <Link
+            href="/wrapped"
+            className="text-sm text-oat underline decoration-hairline underline-offset-2"
+          >
+            Last month
+          </Link>
+          <PeriodTabs active={period} basePath="/" />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
