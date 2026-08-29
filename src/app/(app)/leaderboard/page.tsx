@@ -6,6 +6,7 @@ import { formatMg } from '@/lib/caffeine'
 import { PERIOD_TITLES } from '@/lib/format'
 import { requireMember } from '@/server/auth'
 import { getLeaderboard } from '@/server/stats'
+import { getBadgesForMany } from '@/server/badges'
 
 export const metadata = { title: 'Leaderboard — Buzz' }
 
@@ -17,6 +18,14 @@ export default async function LeaderboardPage({
   const member = await requireMember()
   const period = parsePeriod((await searchParams).period)
   const rows = await getLeaderboard(db, period)
+  /*
+   * Badges are not per-period — you keep them — so this is deliberately not
+   * filtered by the period tabs. One indexed read for the whole table.
+   */
+  const badges = await getBadgesForMany(
+    db,
+    rows.map((row) => row.userId),
+  )
 
   const leaders = rows.filter((row) => row.rank === 1 && row.totalMg > 0)
 
@@ -47,6 +56,7 @@ export default async function LeaderboardPage({
       <div className="panel px-4 py-2">
         <LeaderboardTable
           rows={rows}
+          badges={badges}
           highlightUserId={member.userId}
           showDailyReference={period === 'today'}
         />

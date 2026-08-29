@@ -21,6 +21,16 @@ export type PatchNote = {
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    id: '2026-08-30',
+    title: 'Badges',
+    items: [
+      'There are eleven badges now, for the things a milligram total cannot show — being early, being consistent, being adventurous. They are on your dashboard, and beside your name on the leaderboard.',
+      'None of them is for drinking a lot. The 400 mg figure is health guidance, and handing out a prize for passing it would be a strange thing to do.',
+      'Add a drink that somebody else goes on to log and you get one for that too.',
+      'Undo a drink and any badge it earned goes with it. Earned means earned, but it has to still be true.',
+    ],
+  },
+  {
     id: '2026-08-29',
     title: 'Who just had a coffee',
     items: [
