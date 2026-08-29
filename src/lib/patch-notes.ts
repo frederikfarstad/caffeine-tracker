@@ -21,6 +21,14 @@ export type PatchNote = {
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    id: '2026-08-29',
+    title: 'Who just had a coffee',
+    items: [
+      'The Everyone page now shows what the office has been drinking in the last twelve hours, newest first. It keeps showing last night after midnight, because the working day and the calendar day are not the same thing.',
+      'It is caffeine only. Party mode is yours, and switching it on does not put your Friday into a feed everyone reads.',
+    ],
+  },
+  {
     id: '2026-08-28',
     title: 'Fleks, and a party mode',
     items: [

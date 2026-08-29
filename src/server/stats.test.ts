@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from '@/db/test-db'
 import { members, users } from '@/db/schema'
 import { DRINK_TYPE_SEEDS } from '@/db/seed-data'
-import { drinkTypes } from '@/db/schema'
+import { ALCOHOL_TYPE_SEEDS } from '@/db/alcohol-seed-data'
+import { alcoholDrinkTypes, drinkTypes } from '@/db/schema'
+import { logAlcoholDrink } from './alcohol'
 import { logDrink } from './drinks'
 import {
   getLeaderboard,
+  getTeamActivity,
   getTeamHourHistogram,
   getTeamSplit,
   getTeamTimeSeries,
@@ -493,5 +496,69 @@ describe('getTeamIntakeEvents', () => {
     })
 
     expect(groups.map((group) => group.userId)).toContain('bo')
+  })
+})
+
+describe('getTeamActivity', () => {
+  it('returns the most recent drink first, naming the person and the drink', async () => {
+    const feed = await getTeamActivity(db, { now: NOW })
+
+    expect(feed[0]).toMatchObject({
+      displayName: 'Ada',
+      drinkName: 'Energy 0.5L',
+      caffeineMg: 160,
+    })
+    expect(feed.map((event) => event.consumedAt.getTime())).toEqual(
+      [...feed].map((event) => event.consumedAt.getTime()).sort((a, b) => b - a),
+    )
+  })
+
+  it('leaves out anything older than twelve hours', async () => {
+    // Ada drank at 10:00 and 14:00 Oslo and Linn at 09:00; NOW is 15:00, so the
+    // twelve-hour window holds all of today and none of the 25th.
+    const feed = await getTeamActivity(db, { now: NOW })
+
+    expect(
+      feed.every((event) => event.consumedAt >= new Date(NOW.getTime() - 12 * 3_600_000)),
+    ).toBe(true)
+    expect(feed).toHaveLength(3)
+  })
+
+  it('still shows last night after midnight, when the local date has rolled over', async () => {
+    // 02:30 Oslo on the 26th. A drink at 23:00 Oslo on the 25th is three and a
+    // half hours ago but sits on yesterday's local_date, which is the whole
+    // reason the query spans two dates.
+    const afterMidnight = new Date('2026-08-26T00:30:00Z')
+    await logDrink(db, {
+      userId: 'bo',
+      slug: 'coffee',
+      now: new Date('2026-08-25T21:00:00Z'),
+    })
+
+    const feed = await getTeamActivity(db, { now: afterMidnight })
+
+    expect(feed).toHaveLength(1)
+    expect(feed[0]).toMatchObject({ displayName: 'Bo', drinkName: 'Coffee' })
+  })
+
+  it('never shows a drink from the future, so a backdated now cannot leak ahead', async () => {
+    const afterMidnight = new Date('2026-08-26T00:30:00Z')
+    const feed = await getTeamActivity(db, { now: afterMidnight })
+
+    expect(feed.every((event) => event.consumedAt <= afterMidnight)).toBe(true)
+  })
+
+  it('respects the limit', async () => {
+    expect(await getTeamActivity(db, { now: NOW, limit: 2 })).toHaveLength(2)
+  })
+
+  it('never shows alcohol, whoever is asking', async () => {
+    await db.insert(alcoholDrinkTypes).values(ALCOHOL_TYPE_SEEDS)
+    await logAlcoholDrink(db, { userId: 'ada', slug: 'beer_pint', now: oslo('2026-08-26', 14) })
+
+    const feed = await getTeamActivity(db, { now: NOW })
+
+    expect(feed).toHaveLength(3)
+    expect(feed.some((event) => event.drinkName.toLowerCase().includes('beer'))).toBe(false)
   })
 })
