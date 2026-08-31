@@ -52,24 +52,34 @@ cannot produce a change that passes the gates has not produced the change.
   block `next dev` writes into that file belongs in your commit, because
   removing it only re-creates the change.
 
-## Nobody is going to read your pull request
+## Nobody is going to read your code
 
-Do not write the description for a human reviewer. There isn't one, and there
-isn't going to be one. Write it for the next agent that opens this file in six
-months trying to work out why the code does what it does.
+Not a human, and not an AI. There is no agent reviewer here, on purpose. The
+only thing that reads the diff is CI: four required checks, all of which have to
+be green. They do not get tired, they do not skim, and they do not approve
+something because it's Friday. The gates therefore have to be strict enough to
+stand in for judgement, so they are. If you think a check is wrong, change the
+check in its own pull request and argue the case there. Do not route around it.
 
-What reads your pull request instead:
+What a human reads is your **description** — and only your description. One
+person reads it, decides whether this change should exist, and presses Merge
+without opening the diff.
 
-- **CI**, on every push. Five required checks, all of which have to be green.
-  They are the review. They do not get tired, they do not skim, and they do not
-  approve something because it's Friday.
-- **An agent reviewer**, if the repository has an `ANTHROPIC_API_KEY` secret. It
-  reads the diff against this file, `AGENTS.md` and the README's decisions, and
-  leaves line comments. Its verdict is advisory; the checks are the gate.
+That makes the description the only human-facing surface this repository has,
+which changes how you write it:
 
-The corollary is that the gates have to be strict enough to stand in for
-judgement, so they are. If you think a check is wrong, change the check in its
-own pull request and argue the case there. Do not route around it.
+- **Describe the change in behaviour, not the change in code.** "Undo now works
+  on a drink logged yesterday" can be judged from the description alone.
+  "Refactored `drinks.ts`" cannot be judged at all.
+- **Put the reasoning in the description.** The reader cannot check your
+  argument against the diff, so an argument that exists only in the code has not
+  been made.
+- **Name any of the five decisions you touch, and say why.** Nothing else will
+  surface that.
+- **If it is not in the description, nobody reviewed it.** The checks catch
+  what they were written to catch; a human catches what you told them about.
+  Anything else lands unexamined, which is an argument for small pull requests
+  rather than for longer descriptions.
 
 ## Humans still dictate
 
@@ -80,7 +90,7 @@ holding the levers, and the levers are real:
   what "good" means here are not up for agentic negotiation. This file is one
   of those decisions.
 - **A human presses Merge.** Always. Auto-merge is disabled, so a pull request
-  with five green checks sits there until someone decides it should exist.
+  with four green checks sits there until someone decides it should exist.
   Passing the checks earns you the right to be considered, nothing more.
 - **An unresolved comment thread blocks the merge.** That is the veto. One
   human comment on one line stops a pull request dead, no matter how green it
@@ -176,9 +186,6 @@ The other variables — `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`,
 `TEAM_JOIN_CODE`, `ADMIN_EMAILS` — stay in Vercel alone. CI builds on
 placeholders and never needs the real ones. [SETUP.md](SETUP.md) says where the
 Turso values come from if you no longer have them.
-
-Optionally add `ANTHROPIC_API_KEY` as a repository secret to switch on the
-agent reviewer.
 
 ## The checks
 

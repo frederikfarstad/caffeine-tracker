@@ -67,6 +67,7 @@ export type Member = {
   /** `HH:MM` in Oslo. */
   bedtimeLocal: string
   lastSeenPatchNote: string | null
+  lastSeenWrapped: string | null
   /** Whether the alcohol section and the party page are switched on. */
   partyMode: boolean
   /**
@@ -102,6 +103,7 @@ function toMember(
     },
     bedtimeLocal: row.bedtimeLocal,
     lastSeenPatchNote: row.lastSeenPatchNote,
+    lastSeenWrapped: row.lastSeenWrapped,
     partyMode: row.partyMode,
     bodyProfile: bodyProfileFrom({ bodyWeightKg: row.bodyWeightKg, sex: row.sex }),
     bodyWeightKg: row.bodyWeightKg,

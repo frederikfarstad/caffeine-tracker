@@ -50,6 +50,20 @@
       "when": 1787905974426,
       "tag": "0006_party_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787931013981,
+      "tag": "0007_sturdy_mastermind",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787931700661,
+      "tag": "0008_nebulous_ultron",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import type { TestDb } from '@/db/test-db'
 import type { DrinkCategory } from '@/lib/caffeine'
 import { scaleForVolume } from '@/lib/serving'
 import { addLocalDays, instantFromLocalTime, localBuckets, localDateOf } from '@/lib/time'
+import { awardBadges, grantBadge, recomputeBadgesFor } from './badges'
 
 type AnyDb = Db | TestDb
 
@@ -230,10 +231,48 @@ export async function logDrink(
 
     await addToRollup(tx, { userId, localDate, category: type.category, mg: caffeineMg })
 
+    /*
+     * Badges commit with the drink that earned them, or not at all. Only
+     * unearned badges are evaluated, so an established member pays for one
+     * indexed lookup against `earned_badges` — not a scan of everything they
+     * have ever drunk.
+     */
+    await awardBadges(tx, { userId, localHour, today: localDate, now })
+
+    /*
+     * The one badge that goes to somebody else: whoever added this drink, when
+     * a different member logs it. `created_by` is already on the row read above
+     * to snapshot the caffeine figure, so this costs no extra query.
+     */
+    if (type.createdBy && type.createdBy !== userId) {
+      await grantBadge(tx, { userId: type.createdBy, badgeId: 'pioneer', now })
+    }
+
     return log.id
   })
 
   return { ok: true, logId, caffeineMg, localDate }
+}
+
+/**
+ * Whose badges a deleted log could affect.
+ *
+ * The member who drank it, and — because `pioneer` is earned by somebody else
+ * logging your drink — the author of the drink type, when that is a different
+ * person.
+ */
+async function badgeHoldersAffectedBy(
+  db: AnyDb,
+  log: { userId: string; drinkTypeId: number },
+): Promise<string[]> {
+  const [type] = await db
+    .select({ createdBy: drinkTypes.createdBy })
+    .from(drinkTypes)
+    .where(eq(drinkTypes.id, log.drinkTypeId))
+
+  return type?.createdBy && type.createdBy !== log.userId
+    ? [log.userId, type.createdBy]
+    : [log.userId]
 }
 
 export type UndoResult =
@@ -268,6 +307,8 @@ export async function undoLastDrink(
     return { ok: false, reason: 'too-old' }
   }
 
+  const affected = await badgeHoldersAffectedBy(db, last)
+
   await db.transaction(async (tx) => {
     await tx.delete(drinkLogs).where(eq(drinkLogs.id, last.id))
     await subtractFromRollup(tx, {
@@ -277,6 +318,9 @@ export async function undoLastDrink(
       mg: last.caffeineMg,
     })
     await pruneEmptyRollup(tx, userId, [last.localDate])
+    // A badge the undone drink earned must go with it, or the drift check
+    // would report it for ever.
+    await recomputeBadgesFor(tx, affected)
   })
 
   return { ok: true, caffeineMg: last.caffeineMg }
@@ -433,6 +477,8 @@ export async function deleteDrinkLog(
 
   if (!log) return { ok: false, reason: 'not-found' }
 
+  const affected = await badgeHoldersAffectedBy(db, log)
+
   await db.transaction(async (tx) => {
     await tx.delete(drinkLogs).where(eq(drinkLogs.id, log.id))
     await subtractFromRollup(tx, {
@@ -442,6 +488,9 @@ export async function deleteDrinkLog(
       mg: log.caffeineMg,
     })
     await pruneEmptyRollup(tx, userId, [log.localDate])
+    // A badge the deleted drink earned must go with it, or the drift check
+    // would report it for ever.
+    await recomputeBadgesFor(tx, affected)
   })
 
   return { ok: true }

@@ -21,6 +21,33 @@ export type PatchNote = {
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    id: '2026-08-31',
+    title: 'Your month',
+    items: [
+      'On the first of each month you get a summary of the one just gone: what you drank, your biggest day, the hour you are most predictable, your longest streak, and where you came in.',
+      'It arrives once and then gets out of the way. It also lives at a page of its own, linked from your dashboard, so a wrapped you dismissed is still there to settle an argument with.',
+      'A month you were not here for is not celebrated at you, and you will never get it on top of a patch note — one dialog at a time.',
+    ],
+  },
+  {
+    id: '2026-08-30',
+    title: 'Badges',
+    items: [
+      'There are eleven badges now, for the things a milligram total cannot show — being early, being consistent, being adventurous. They are on your dashboard, and beside your name on the leaderboard.',
+      'None of them is for drinking a lot. The 400 mg figure is health guidance, and handing out a prize for passing it would be a strange thing to do.',
+      'Add a drink that somebody else goes on to log and you get one for that too.',
+      'Undo a drink and any badge it earned goes with it. Earned means earned, but it has to still be true.',
+    ],
+  },
+  {
+    id: '2026-08-29',
+    title: 'Who just had a coffee',
+    items: [
+      'The Everyone page now shows what the office has been drinking in the last twelve hours, newest first. It keeps showing last night after midnight, because the working day and the calendar day are not the same thing.',
+      'It is caffeine only. Party mode is yours, and switching it on does not put your Friday into a feed everyone reads.',
+    ],
+  },
+  {
     id: '2026-08-28',
     title: 'Fleks, and a party mode',
     items: [

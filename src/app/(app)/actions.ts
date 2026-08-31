@@ -18,6 +18,7 @@ import {
   updateAlcoholLog,
 } from '@/server/alcohol'
 import { addDrinkType } from '@/server/drink-types'
+import { markWrappedSeen } from '@/server/wrapped'
 import { LATEST_PATCH_NOTE } from '@/lib/patch-notes'
 import { markPatchNoteSeen } from '@/server/settings'
 
@@ -116,6 +117,19 @@ export async function undoLastDrinkAction(): Promise<ActionResult> {
 export async function dismissPatchNotes(previousNoteId: string | null): Promise<void> {
   const member = await requireMember()
   await markPatchNoteSeen(db, member.userId, LATEST_PATCH_NOTE, previousNoteId)
+}
+
+/**
+ * Mark a monthly wrapped as seen.
+ *
+ * Fire-and-forget from the dialog, like `dismissPatchNotes`: nothing on screen
+ * depends on the result. Takes the month from the client, which is safe because
+ * `markWrappedSeen` only ever moves the marker forwards — the worst a bad value
+ * can do is fail to advance it.
+ */
+export async function dismissWrapped(month: string): Promise<void> {
+  const member = await requireMember()
+  await markWrappedSeen(db, member.userId, month)
 }
 
 /* -------------------------------------------------------------------------- */

@@ -50,3 +50,27 @@ export const PERIOD_TITLES: Record<Period, string> = {
   month: 'this month',
   all: 'all time',
 }
+
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+
+/**
+ * How long ago an instant was, in the shortest form that is still true.
+ *
+ * Takes `now` as an argument rather than reading the clock, so a server render
+ * can label a whole list against the single instant the rest of the page was
+ * built from. A helper that called `Date.now()` itself would give two rows in
+ * the same list two different presents.
+ *
+ * Clamps the future to "just now": a clock a few seconds out should not produce
+ * a negative count.
+ */
+export function formatAgo(instant: Date | number, now: Date | number): string {
+  const elapsed = Number(now) - Number(instant)
+  if (elapsed < MINUTE_MS) return 'just now'
+
+  const minutes = Math.floor(elapsed / MINUTE_MS)
+  if (minutes < 60) return `${minutes} min ago`
+
+  return `${Math.floor(elapsed / HOUR_MS)} h ago`
+}

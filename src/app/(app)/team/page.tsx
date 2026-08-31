@@ -6,11 +6,18 @@ import { HourOfDayChart } from '@/components/charts/HourOfDayChart'
 import { LiveRefresh } from '@/components/LiveRefresh'
 import { PeriodTabs, parsePeriod } from '@/components/PeriodTabs'
 import { StatTile } from '@/components/StatTile'
+import { TeamTicker } from '@/components/TeamTicker'
 import { db } from '@/db'
 import { CATEGORY_LABELS, formatMg } from '@/lib/caffeine'
 import { PERIOD_TITLES, formatBucketLabel } from '@/lib/format'
 import { requireMember } from '@/server/auth'
-import { getTeamHourHistogram, getTeamIntakeEvents, getTeamSplit, getTeamTimeSeries } from '@/server/stats'
+import {
+  getTeamActivity,
+  getTeamHourHistogram,
+  getTeamIntakeEvents,
+  getTeamSplit,
+  getTeamTimeSeries,
+} from '@/server/stats'
 import { combinedCaffeineCurve, combinedLoadAt, curveWindow } from '@/lib/blood-caffeine'
 import { formatOsloClock } from '@/lib/format'
 
@@ -28,11 +35,15 @@ export default async function TeamDashboard({
   const now = new Date()
   const lookback = curveWindow([], now).from
 
-  const [series, hours, split, intake] = await Promise.all([
+  const [series, hours, split, intake, activity] = await Promise.all([
     getTeamTimeSeries(db, period),
     getTeamHourHistogram(db, period),
     getTeamSplit(db, period),
     getTeamIntakeEvents(db, { from: lookback, now }),
+    // Ignores the period tabs, like the bloodstream chart below: "who just had
+    // a coffee" is a right-now question and there is no such thing as the
+    // office's recent activity "this month".
+    getTeamActivity(db, { now }),
   ])
 
   const team = intake.map(({ profile, doses }) => ({ profile, doses }))
@@ -78,6 +89,14 @@ export default async function TeamDashboard({
           tone="zap"
         />
       </div>
+
+      {/*
+       * Above the charts because it is the part of this page that changes
+       * minute to minute, and outside the `hasData` branch because it has its
+       * own empty check — the selected period can be empty while the last
+       * twelve hours are not.
+       */}
+      <TeamTicker events={activity} now={now} />
 
       {hasData ? (
         <>

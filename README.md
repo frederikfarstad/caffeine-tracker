@@ -59,6 +59,7 @@ npm run build
 | `npm run db:seed` | Insert the starting drink types (idempotent) |
 | `npm run db:studio` | Browse the database |
 | `npm run db:rebuild-rollup` | Check `daily_totals` against `drink_logs`, then rebuild |
+| `npm run db:rebuild-badges` | Check `earned_badges` against `drink_logs`, then rebuild |
 
 `db:migrate` and `db:seed` read `.env.local`. `db:migrate:ci` and `db:seed:ci`
 are the same two commands without that wrapper, for CI, where the environment
@@ -73,6 +74,8 @@ src/
   lib/alcohol.ts     Grams from volume and ABV, units, the 0.2‰ limit
   lib/blood-alcohol.ts  Widmark, simulated: zero-order elimination
   lib/party-time.ts  When the dashboard leads with alcohol instead
+  lib/badges.ts      Badge predicates, all pure functions of the logs
+  lib/wrapped.ts     Month keys, ranges and names
   db/schema.ts       Drizzle tables and migrations
   db/rollup.ts       daily_totals rebuild and drift check
   server/auth.ts     Auth.js config, requireMember / requireAdmin
@@ -80,11 +83,13 @@ src/
   server/drinks.ts   Logging and undo
   server/stats.ts    Every statistic the UI reads
   server/alcohol.ts  Party mode, deliberately without a rollup
+  server/badges.ts   Awarding, revoking, and the replay that rebuilds them
+  server/wrapped.ts  One member's month, assembled from the rollup
   app/(app)/         The signed-in pages
   components/        UI, including the buzz meter and charts
 ```
 
-Five decisions worth knowing before you change anything:
+Six decisions worth knowing before you change anything:
 
 **Membership is the access grant.** A signed-in Google account with no row in
 `members` hasn't entered the team code yet, so "is this person allowed in?" is
@@ -104,6 +109,14 @@ scanned, so day-or-coarser questions read one row per person per day instead of
 every drink ever logged. `drink_logs` stays authoritative;
 `npm run db:rebuild-rollup` regenerates the rollup and reports any drift.
 
+**A badge is a pure function of the logs.** `earned_badges` is derived data,
+like `daily_totals`, and `npm run db:rebuild-badges` replays `drink_logs` in
+write order — a fold rather than an aggregate, because badges are
+order-dependent — to reproduce it exactly. That is only possible because no
+predicate reads anything but the logs: a badge for "was online when X happened"
+could never be rebuilt, and would quietly become a second source of truth. It is
+also why deleting a drink recomputes badges rather than leaving them be.
+
 **Alcohol is a parallel path, not a drink category.** Sharing `drink_logs` would
 put a beer into every aggregate in `stats.ts` as a zero-milligram row — the
 drink count, the rank, the streak, the category split. Two tables that never
@@ -119,7 +132,7 @@ at the type level.
 npm test
 ```
 
-439 tests. The ones that matter most:
+535 tests. The ones that matter most:
 
 - `lib/time.test.ts` — both Oslo DST transitions, and the nightly window where
   the UTC date and the Oslo date disagree.
@@ -131,6 +144,10 @@ npm test
   the same at an instant however early its window starts.
 - `server/alcohol.test.ts` — that logging, editing, undoing and deleting a drink
   leave `drink_logs` and `daily_totals` byte-for-byte unchanged.
+- `server/badges.test.ts` — that a rebuild reproduces exactly what awarding
+  produced, and that undoing a drink takes back the badge it earned.
+- `server/wrapped.test.ts` — that a month stops at its own edges: no drink from
+  the next one, and no streak running past the last day.
 
 Integration tests run against real libSQL database files, so they exercise the
 same engine as production with no container and no network. They use files
@@ -161,9 +178,9 @@ repository; an unresolved comment thread is the human veto instead, and admins
 can still push when the building is on fire. `scripts/protect-main.sh` sets all
 of this, and is idempotent.
 
-An agent reviewer reads each diff against the five decisions above, if the
-repository has an `ANTHROPIC_API_KEY` secret. Its verdict is advisory — the
-checks are the gate.
+Nothing else reads the diff — no human, and no agent reviewer. A person reads
+the pull request description, decides whether the change should exist, and
+merges. Write the description accordingly.
 
 ## How it deploys
 
