@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ContributeFooter } from '@/components/ContributeFooter'
 import { PatchNotesDialog } from '@/components/PatchNotesDialog'
 import { unseenPatchNotes } from '@/lib/patch-notes'
 import { requireMember, signOut } from '@/server/auth'
@@ -92,6 +93,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <main className="flex-1 space-y-4">{children}</main>
+
+      <ContributeFooter />
 
       {unseen.length > 0 && (
         <PatchNotesDialog notes={unseen} seen={member.lastSeenPatchNote} />
