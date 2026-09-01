@@ -61,6 +61,7 @@ describe('listActiveAlcoholTypes', () => {
       'wine_glass',
       'spirit_4cl',
       'cider_033',
+      'hiroshima',
     ])
     expect(types[0].alcoholGrams).toBeCloseTo(18.54, 2)
   })
