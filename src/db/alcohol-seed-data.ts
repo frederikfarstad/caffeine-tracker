@@ -29,6 +29,14 @@ export const ALCOHOL_TYPE_SEEDS: AlcoholTypeSeed[] = [
     sortOrder: 10,
   },
   {
+    slug: 'beer_040',
+    name: 'Beer 0.4L',
+    category: 'beer',
+    volumeMl: 400,
+    abvPercent: 4.7,
+    sortOrder: 15,
+  },
+  {
     slug: 'beer_small',
     name: 'Beer 0.33L',
     category: 'beer',
