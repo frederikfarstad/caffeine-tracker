@@ -17,6 +17,7 @@ import {
   getTeamIntakeEvents,
   getUserFavouriteDrinkTypes,
   getUserIntakeEvents,
+  getUserPreviousPeriodMg,
   getUserSummary,
   getUserTimeSeries,
 } from './stats'
@@ -158,6 +159,23 @@ describe('getUserTimeSeries', () => {
   it('returns a single zero bucket for someone with no history', async () => {
     const series = await getUserTimeSeries(db, 'bo', 'all', NOW)
     expect(series).toEqual([{ bucket: '2026-08-26', mg: 0 }])
+  })
+})
+
+describe('getUserPreviousPeriodMg', () => {
+  it('totals yesterday for "today"', async () => {
+    // Ada logged 95mg on 2026-08-25, the day before NOW.
+    expect(await getUserPreviousPeriodMg(db, 'ada', 'today', NOW)).toBe(95)
+  })
+
+  it('returns zero when the previous span has no drinks', async () => {
+    // The previous week, 2026-08-17 to 2026-08-19, is empty for Ada.
+    expect(await getUserPreviousPeriodMg(db, 'ada', 'week', NOW)).toBe(0)
+  })
+
+  it('sums the same span last month', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now: oslo('2026-07-15', 9) }) // 95
+    expect(await getUserPreviousPeriodMg(db, 'ada', 'month', NOW)).toBe(95)
   })
 })
 

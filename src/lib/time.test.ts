@@ -9,6 +9,7 @@ import {
   nextLocalTimeAfter,
   localDateOf,
   periodToDateRange,
+  previousPeriodRange,
   weekdayOf,
 } from './time'
 
@@ -236,6 +237,50 @@ describe('periodToDateRange', () => {
     const range = periodToDateRange('week', dstSunday)
     expect(range).toEqual({ from: '2026-10-19', to: '2026-10-25' })
     expect(enumerateLocalDates(range.from!, range.to)).toHaveLength(7)
+  })
+})
+
+describe('previousPeriodRange', () => {
+  // A Wednesday, 15:30 Oslo time.
+  const wednesday = new Date('2026-08-26T13:30:00Z')
+
+  it('steps "today" back to yesterday', () => {
+    expect(previousPeriodRange('today', wednesday)).toEqual({
+      from: '2026-08-25',
+      to: '2026-08-25',
+    })
+  })
+
+  it('shifts "week" back by seven days, same span as this week to date', () => {
+    // This week is 2026-08-24 (Mon) to 2026-08-26 (Wed).
+    expect(previousPeriodRange('week', wednesday)).toEqual({
+      from: '2026-08-17',
+      to: '2026-08-19',
+    })
+  })
+
+  it('shifts "month" back to the same day-of-month last month', () => {
+    expect(previousPeriodRange('month', wednesday)).toEqual({
+      from: '2026-07-01',
+      to: '2026-07-26',
+    })
+  })
+
+  it('clamps the day-of-month to the previous month’s length', () => {
+    // 2026-03-31 has no equivalent in February, which only has 28 days.
+    const marchThirtyFirst = new Date('2026-03-31T10:00:00Z')
+    expect(previousPeriodRange('month', marchThirtyFirst)).toEqual({
+      from: '2026-02-01',
+      to: '2026-02-28',
+    })
+  })
+
+  it('rolls a January comparison back into December of the previous year', () => {
+    const midJanuary = new Date('2026-01-15T10:00:00Z')
+    expect(previousPeriodRange('month', midJanuary)).toEqual({
+      from: '2025-12-01',
+      to: '2025-12-15',
+    })
   })
 })
 

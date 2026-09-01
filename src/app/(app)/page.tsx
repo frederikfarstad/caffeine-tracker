@@ -29,7 +29,7 @@ import {
   drivingOutlook,
 } from '@/lib/blood-alcohol'
 import { isPartyTime } from '@/lib/party-time'
-import { localDateOf, nextLocalTimeAfter } from '@/lib/time'
+import { localDateOf, nextLocalTimeAfter, type Period } from '@/lib/time'
 import { requireMember } from '@/server/auth'
 import {
   getUndoableAlcoholDrink,
@@ -43,10 +43,31 @@ import { getUndoableDrink, getUserRecentDrinks, listActiveDrinkTypes } from '@/s
 import {
   getUserFavouriteDrinkTypes,
   getUserIntakeEvents,
+  getUserPreviousPeriodMg,
   getUserStreak,
   getUserSummary,
   getUserTimeSeries,
 } from '@/server/stats'
+
+const PREVIOUS_PERIOD_LABEL: Record<Exclude<Period, 'all'>, string> = {
+  today: 'yesterday',
+  week: 'last week',
+  month: 'last month',
+}
+
+/**
+ * The comparison line under the caffeine total, or undefined when there is
+ * nothing to compare against: "all" has no earlier "all", and a zero
+ * previous period would only produce a meaningless divide-by-zero percentage.
+ */
+function periodDeltaDetail(period: Period, currentMg: number, previousMg: number): string | undefined {
+  if (period === 'all' || previousMg <= 0) return undefined
+
+  const change = Math.round(((currentMg - previousMg) / previousMg) * 100)
+  const label = PREVIOUS_PERIOD_LABEL[period]
+  if (change === 0) return `Flat vs ${label}`
+  return `${change > 0 ? '+' : ''}${change}% vs ${label}`
+}
 
 /** The sentence under the caffeine curve, which is the point of the chart. */
 function outlookFootnote(outlook: ReturnType<typeof sleepOutlook>, thresholdMg: number): string {
@@ -176,6 +197,7 @@ export default async function PersonalDashboard({
     undoable,
     today,
     summary,
+    previousPeriodMg,
     series,
     streak,
     intake,
@@ -193,6 +215,9 @@ export default async function PersonalDashboard({
     getUndoableDrink(db, { userId: member.userId }),
     getUserSummary(db, member.userId, 'today'),
     getUserSummary(db, member.userId, period),
+    period === 'all'
+      ? Promise.resolve(0)
+      : getUserPreviousPeriodMg(db, member.userId, period, now),
     getUserTimeSeries(db, member.userId, period),
     getUserStreak(db, member.userId),
     getUserIntakeEvents(db, member.userId, { from: lookback, now }),
@@ -296,6 +321,7 @@ export default async function PersonalDashboard({
         <StatTile
           legend={`Caffeine · ${PERIOD_TITLES[period]}`}
           value={formatMg(summary.totalMg)}
+          detail={periodDeltaDetail(period, summary.totalMg, previousPeriodMg)}
           tone="crema"
         />
         <StatTile
