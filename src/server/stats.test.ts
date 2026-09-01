@@ -16,6 +16,7 @@ import {
   getUserStreak,
   getTeamIntakeEvents,
   getUserFavouriteDrinkTypes,
+  getUserHourHistogram,
   getUserIntakeEvents,
   getUserSummary,
   getUserTimeSeries,
@@ -158,6 +159,30 @@ describe('getUserTimeSeries', () => {
   it('returns a single zero bucket for someone with no history', async () => {
     const series = await getUserTimeSeries(db, 'bo', 'all', NOW)
     expect(series).toEqual([{ bucket: '2026-08-26', mg: 0 }])
+  })
+})
+
+describe('getUserHourHistogram', () => {
+  it('returns one bar per hour of the day', async () => {
+    const bars = await getUserHourHistogram(db, 'ada', 'today', NOW)
+    expect(bars).toHaveLength(24)
+    expect(bars.map((bar) => bar.hour)).toEqual(Array.from({ length: 24 }, (_, i) => i))
+  })
+
+  it('shows when that person drinks, not the whole office', async () => {
+    const bars = await getUserHourHistogram(db, 'ada', 'today', NOW)
+    const byHour = Object.fromEntries(bars.map((bar) => [bar.hour, bar.mg]))
+    expect(byHour[10]).toBe(95)
+    expect(byHour[14]).toBe(160)
+    // Linn's espresso, not Ada's.
+    expect(byHour[9]).toBe(0)
+  })
+
+  it('aggregates hours across a longer period', async () => {
+    const bars = await getUserHourHistogram(db, 'ada', 'month', NOW)
+    const byHour = Object.fromEntries(bars.map((bar) => [bar.hour, bar.mg]))
+    // Ada's coffees on the 25th and 20th, both at 09:00.
+    expect(byHour[9]).toBe(95 + 95)
   })
 })
 
