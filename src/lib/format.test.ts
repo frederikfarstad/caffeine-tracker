@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { formatAgo, formatDayTick, formatOsloClock } from './format'
+import { formatAgo, formatDayTick, formatOsloClock, formatWeekday } from './format'
 
 describe('formatDayTick', () => {
   it('renders day before month, Norwegian order', () => {
     expect(formatDayTick('2026-08-26')).toBe('26.08')
+  })
+})
+
+describe('formatWeekday', () => {
+  it('labels 1 through 7 as Monday through Sunday', () => {
+    expect([1, 2, 3, 4, 5, 6, 7].map(formatWeekday)).toEqual([
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ])
   })
 })
 

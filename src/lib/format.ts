@@ -51,6 +51,14 @@ export const PERIOD_TITLES: Record<Period, string> = {
   all: 'all time',
 }
 
+/** Monday-first, matching `weekdayOf`'s numbering in `lib/time.ts`. */
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+/** `weekdayOf`'s 1 (Monday) through 7 (Sunday) as a three-letter label. */
+export function formatWeekday(weekday: number): string {
+  return WEEKDAY_LABELS[weekday - 1]
+}
+
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
 
