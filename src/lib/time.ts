@@ -215,6 +215,43 @@ export function periodToDateRange(period: Period, now: Date): DateRange {
 }
 
 /**
+ * The equivalent span one period back, for a "vs last week" comparison.
+ *
+ * Week and month are to-date ranges, not full calendar periods, so the fair
+ * comparison is the same span shifted back — this week's Monday-to-today
+ * against last week's Monday-to-the-same-weekday, not a lopsided full week
+ * against a partial one. `all` has no earlier `all` to compare against, which
+ * is why it is excluded at the type level rather than merely unhandled.
+ */
+export function previousPeriodRange(period: Exclude<Period, 'all'>, now: Date): DateRange {
+  const today = localDateOf(now)
+
+  switch (period) {
+    case 'today': {
+      const yesterday = addLocalDays(today, -1)
+      return { from: yesterday, to: yesterday }
+    }
+    case 'week': {
+      const weekStart = addLocalDays(today, -(weekdayOf(today) - 1))
+      return { from: addLocalDays(weekStart, -7), to: addLocalDays(today, -7) }
+    }
+    case 'month': {
+      const [year, month, day] = today.split('-').map(Number)
+      const prevMonthStart = new Date(Date.UTC(year, month - 2, 1))
+      const prevYear = prevMonthStart.getUTCFullYear()
+      const prevMonth = prevMonthStart.getUTCMonth() + 1
+      // Clamp to the previous month's length, so "the 31st" of a 30-day month
+      // compares against its last day rather than overflowing into the month
+      // after.
+      const daysInPrevMonth = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate()
+      const cutoffDay = Math.min(day, daysInPrevMonth)
+      const key = `${prevYear}-${String(prevMonth).padStart(2, '0')}`
+      return { from: `${key}-01`, to: `${key}-${String(cutoffDay).padStart(2, '0')}` }
+    }
+  }
+}
+
+/**
  * How fine the time series for a period should be.
  *
  * A single day is only interesting hour by hour; anything longer would be

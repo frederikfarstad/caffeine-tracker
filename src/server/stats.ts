@@ -13,6 +13,7 @@ import {
   enumerateLocalDates,
   localDateOf,
   periodToDateRange,
+  previousPeriodRange,
   weekdayOf,
   type DateRange,
   type LocalDate,
@@ -215,6 +216,25 @@ export async function getUserSummary(
     rank: mine.rank,
     memberCount,
   }
+}
+
+/**
+ * This period's total against the same span one period back — "vs last
+ * week" rather than a lopsided full week against a partial one.
+ *
+ * `all` is excluded at the type level: there is no earlier "all" to compare
+ * against, so callers decide what to show instead of this returning a number
+ * that would only mislead.
+ */
+export async function getUserPreviousPeriodMg(
+  db: AnyDb,
+  userId: string,
+  period: Exclude<Period, 'all'>,
+  now = new Date(),
+): Promise<number> {
+  const range = previousPeriodRange(period, now)
+  const totals = await aggregateByUser(db, range)
+  return totals.find((row) => row.userId === userId)?.totalMg ?? 0
 }
 
 export async function getUserTimeSeries(
