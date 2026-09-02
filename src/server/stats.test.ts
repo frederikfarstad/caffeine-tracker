@@ -20,6 +20,7 @@ import {
   getUserIntakeEvents,
   getUserSummary,
   getUserTimeSeries,
+  getUserWeekdayHistogram,
 } from './stats'
 
 let db: TestDb
@@ -159,6 +160,36 @@ describe('getUserTimeSeries', () => {
   it('returns a single zero bucket for someone with no history', async () => {
     const series = await getUserTimeSeries(db, 'bo', 'all', NOW)
     expect(series).toEqual([{ bucket: '2026-08-26', mg: 0 }])
+  })
+})
+
+describe('getUserWeekdayHistogram', () => {
+  it('returns one bar per weekday, Monday through Sunday', async () => {
+    const bars = await getUserWeekdayHistogram(db, 'ada', 'month', NOW)
+    expect(bars.map((bar) => bar.weekday)).toEqual([1, 2, 3, 4, 5, 6, 7])
+  })
+
+  it('sums drinks onto the weekday of their date', async () => {
+    // Ada's month: Tue 08-25 (95), Wed 08-26 (255), Thu 08-20 (95).
+    const bars = await getUserWeekdayHistogram(db, 'ada', 'month', NOW)
+    const byWeekday = Object.fromEntries(bars.map((bar) => [bar.weekday, bar.mg]))
+    expect(byWeekday[1]).toBe(0) // No Monday drinks this month.
+    expect(byWeekday[2]).toBe(95)
+    expect(byWeekday[3]).toBe(255)
+    expect(byWeekday[4]).toBe(95)
+  })
+
+  it('combines separate days that land on the same weekday', async () => {
+    // 2026-08-05 is also a Wednesday, same as 08-26.
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now: oslo('2026-08-05', 9) }) // 95
+    const bars = await getUserWeekdayHistogram(db, 'ada', 'month', NOW)
+    expect(bars.find((bar) => bar.weekday === 3)?.mg).toBe(255 + 95)
+  })
+
+  it('scopes to one person, not the whole team', async () => {
+    // Linn's espresso landed on the same Wednesday as Ada's drinks.
+    const bars = await getUserWeekdayHistogram(db, 'ada', 'today', NOW)
+    expect(bars.find((bar) => bar.weekday === 3)?.mg).toBe(255)
   })
 })
 
