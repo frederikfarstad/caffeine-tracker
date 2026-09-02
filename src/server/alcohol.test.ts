@@ -55,11 +55,13 @@ describe('listActiveAlcoholTypes', () => {
     const types = await listActiveAlcoholTypes(db)
     expect(types.map((t) => t.slug)).toEqual([
       'beer_pint',
+      'beer_040',
       'beer_small',
       'beer_strong',
       'wine_glass',
       'spirit_4cl',
       'cider_033',
+      'hiroshima',
     ])
     expect(types[0].alcoholGrams).toBeCloseTo(18.54, 2)
   })

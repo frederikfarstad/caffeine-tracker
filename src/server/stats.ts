@@ -283,6 +283,23 @@ export async function getUserWeekdayHistogram(
 }
 
 /**
+ * When one person drinks, by hour of the local day, summed across the period.
+ *
+ * The personal counterpart to `getTeamHourHistogram` — same `hourRows` query,
+ * scoped to a user, for the same reason it reads `drink_logs`: the rollup has
+ * no hour resolution.
+ */
+export async function getUserHourHistogram(
+  db: AnyDb,
+  userId: string,
+  period: Period,
+  now = new Date(),
+): Promise<HourBar[]> {
+  const range = periodToDateRange(period, now)
+  return fillHours(await hourRows(db, range, userId))
+}
+
+/**
  * Consecutive days ending today with at least one drink.
  *
  * Today not having a drink yet does not break a streak — the day isn't over —

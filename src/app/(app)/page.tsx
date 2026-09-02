@@ -3,6 +3,7 @@ import { BloodAlcoholChart } from '@/components/charts/BloodAlcoholChart'
 import { BloodCaffeineChart } from '@/components/charts/BloodCaffeineChart'
 import { ConsumptionChart } from '@/components/charts/ConsumptionChart'
 import { WeekdayChart } from '@/components/charts/WeekdayChart'
+import { HourOfDayChart } from '@/components/charts/HourOfDayChart'
 import { ChartFrame } from '@/components/charts/ChartFrame'
 import { BadgeList } from '@/components/BadgeList'
 import { LogDrinkPanel } from '@/components/LogDrinkPanel'
@@ -43,6 +44,7 @@ import { buildContext, getBadgesFor } from '@/server/badges'
 import { getUndoableDrink, getUserRecentDrinks, listActiveDrinkTypes } from '@/server/drinks'
 import {
   getUserFavouriteDrinkTypes,
+  getUserHourHistogram,
   getUserIntakeEvents,
   getUserStreak,
   getUserSummary,
@@ -180,6 +182,7 @@ export default async function PersonalDashboard({
     summary,
     series,
     weekdays,
+    hours,
     streak,
     intake,
     recent,
@@ -203,6 +206,7 @@ export default async function PersonalDashboard({
      * "Which day hits hardest" gated to "today" would render six empty bars.
      */
     getUserWeekdayHistogram(db, member.userId, 'all', now),
+    getUserHourHistogram(db, member.userId, period, now),
     getUserStreak(db, member.userId),
     getUserIntakeEvents(db, member.userId, { from: lookback, now }),
     getUserRecentDrinks(db, member.userId, { now, days: historyDays }),
@@ -363,17 +367,32 @@ export default async function PersonalDashboard({
       )}
 
       {hasHistory ? (
-        <ChartFrame
-          legend={`Milligrams · ${PERIOD_TITLES[period]}`}
-          title={period === 'today' ? 'Your day, hour by hour' : 'Your caffeine over time'}
-          columns={['Caffeine (mg)']}
-          rows={series.map((point) => ({
-            label: formatBucketLabel(point.bucket, period),
-            values: [String(point.mg)],
-          }))}
-        >
-          <ConsumptionChart data={series} period={period} />
-        </ChartFrame>
+        <>
+          <ChartFrame
+            legend={`Milligrams · ${PERIOD_TITLES[period]}`}
+            title={period === 'today' ? 'Your day, hour by hour' : 'Your caffeine over time'}
+            columns={['Caffeine (mg)']}
+            rows={series.map((point) => ({
+              label: formatBucketLabel(point.bucket, period),
+              values: [String(point.mg)],
+            }))}
+          >
+            <ConsumptionChart data={series} period={period} />
+          </ChartFrame>
+
+          <ChartFrame
+            legend="Milligrams · by hour of day"
+            title="When you drink"
+            columns={['Caffeine (mg)']}
+            rows={hours.map((bar) => ({
+              label: `${String(bar.hour).padStart(2, '0')}:00`,
+              values: [String(bar.mg)],
+            }))}
+            footnote="Local hour in Oslo, summed across the whole period."
+          >
+            <HourOfDayChart data={hours} />
+          </ChartFrame>
+        </>
       ) : (
         <p className="panel px-4 py-8 text-center text-sm text-oat">
           Nothing logged {PERIOD_TITLES[period]}. Tap a drink above the moment you pour one.
