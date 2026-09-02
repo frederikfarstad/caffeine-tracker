@@ -102,7 +102,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           >
             Settings
           </Link>
-          <form action={signOutAction}>
+          {/* flex, not block: a bare form here opens a strut sized off its own unstyled font, pushing the button below its siblings */}
+          <form action={signOutAction} className="flex">
             <button
               type="submit"
               className="font-gauge text-[0.6875rem] tracking-[0.1em] text-oat uppercase transition-colors hover:text-foam"

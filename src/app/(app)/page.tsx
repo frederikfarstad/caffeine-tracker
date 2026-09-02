@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { BloodAlcoholChart } from '@/components/charts/BloodAlcoholChart'
 import { BloodCaffeineChart } from '@/components/charts/BloodCaffeineChart'
 import { ConsumptionChart } from '@/components/charts/ConsumptionChart'
+import { WeekdayChart } from '@/components/charts/WeekdayChart'
+import { HourOfDayChart } from '@/components/charts/HourOfDayChart'
 import { ChartFrame } from '@/components/charts/ChartFrame'
 import { BadgeList } from '@/components/BadgeList'
 import { LogDrinkPanel } from '@/components/LogDrinkPanel'
@@ -12,7 +14,7 @@ import { RecentDrinks } from '@/components/RecentDrinks'
 import { PeriodTabs, parsePeriod } from '@/components/PeriodTabs'
 import { StatTile } from '@/components/StatTile'
 import { db } from '@/db'
-import { PERIOD_TITLES, formatBucketLabel, formatOsloClock } from '@/lib/format'
+import { PERIOD_TITLES, formatBucketLabel, formatOsloClock, formatWeekday } from '@/lib/format'
 import { formatMg } from '@/lib/caffeine'
 import {
   bloodCaffeineCurve,
@@ -42,11 +44,13 @@ import { buildContext, getBadgesFor } from '@/server/badges'
 import { getUndoableDrink, getUserRecentDrinks, listActiveDrinkTypes } from '@/server/drinks'
 import {
   getUserFavouriteDrinkTypes,
+  getUserHourHistogram,
   getUserIntakeEvents,
   getUserPreviousPeriodMg,
   getUserStreak,
   getUserSummary,
   getUserTimeSeries,
+  getUserWeekdayHistogram,
 } from '@/server/stats'
 
 const PREVIOUS_PERIOD_LABEL: Record<Exclude<Period, 'all'>, string> = {
@@ -199,6 +203,8 @@ export default async function PersonalDashboard({
     summary,
     previousPeriodMg,
     series,
+    weekdays,
+    hours,
     streak,
     intake,
     recent,
@@ -219,6 +225,13 @@ export default async function PersonalDashboard({
       ? Promise.resolve(0)
       : getUserPreviousPeriodMg(db, member.userId, period, now),
     getUserTimeSeries(db, member.userId, period),
+    /*
+     * Always all time, independent of the period tabs — like the curve
+     * above, this is a question about a habit rather than a selected window.
+     * "Which day hits hardest" gated to "today" would render six empty bars.
+     */
+    getUserWeekdayHistogram(db, member.userId, 'all', now),
+    getUserHourHistogram(db, member.userId, period, now),
     getUserStreak(db, member.userId),
     getUserIntakeEvents(db, member.userId, { from: lookback, now }),
     getUserRecentDrinks(db, member.userId, { now, days: historyDays }),
@@ -244,6 +257,7 @@ export default async function PersonalDashboard({
   ])
 
   const hasHistory = series.some((point) => point.mg > 0)
+  const hasWeekdayHistory = weekdays.some((bar) => bar.mg > 0)
 
   const doses = intake.map((event) => ({ consumedAt: event.consumedAt, mg: event.caffeineMg }))
   const bounds = curveWindow(doses, now, profile)
@@ -379,21 +393,51 @@ export default async function PersonalDashboard({
       )}
 
       {hasHistory ? (
-        <ChartFrame
-          legend={`Milligrams · ${PERIOD_TITLES[period]}`}
-          title={period === 'today' ? 'Your day, hour by hour' : 'Your caffeine over time'}
-          columns={['Caffeine (mg)']}
-          rows={series.map((point) => ({
-            label: formatBucketLabel(point.bucket, period),
-            values: [String(point.mg)],
-          }))}
-        >
-          <ConsumptionChart data={series} period={period} />
-        </ChartFrame>
+        <>
+          <ChartFrame
+            legend={`Milligrams · ${PERIOD_TITLES[period]}`}
+            title={period === 'today' ? 'Your day, hour by hour' : 'Your caffeine over time'}
+            columns={['Caffeine (mg)']}
+            rows={series.map((point) => ({
+              label: formatBucketLabel(point.bucket, period),
+              values: [String(point.mg)],
+            }))}
+          >
+            <ConsumptionChart data={series} period={period} />
+          </ChartFrame>
+
+          <ChartFrame
+            legend="Milligrams · by hour of day"
+            title="When you drink"
+            columns={['Caffeine (mg)']}
+            rows={hours.map((bar) => ({
+              label: `${String(bar.hour).padStart(2, '0')}:00`,
+              values: [String(bar.mg)],
+            }))}
+            footnote="Local hour in Oslo, summed across the whole period."
+          >
+            <HourOfDayChart data={hours} />
+          </ChartFrame>
+        </>
       ) : (
         <p className="panel px-4 py-8 text-center text-sm text-oat">
           Nothing logged {PERIOD_TITLES[period]}. Tap a drink above the moment you pour one.
         </p>
+      )}
+
+      {hasWeekdayHistory && (
+        <ChartFrame
+          legend="Milligrams · all time"
+          title="Which day hits hardest"
+          columns={['Caffeine (mg)']}
+          rows={weekdays.map((bar) => ({
+            label: formatWeekday(bar.weekday),
+            values: [String(bar.mg)],
+          }))}
+          footnote="Summed across your whole history, not an average — some weekdays have come around more often than others."
+        >
+          <WeekdayChart data={weekdays} />
+        </ChartFrame>
       )}
 
       <BadgeList earned={badges.map((badge) => badge.badgeId)} context={badgeContext} />

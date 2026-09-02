@@ -14,6 +14,7 @@ import {
   localDateOf,
   periodToDateRange,
   previousPeriodRange,
+  weekdayOf,
   type DateRange,
   type LocalDate,
   type Period,
@@ -70,6 +71,12 @@ export type CategorySplit = {
 
 export type HourBar = {
   hour: number
+  mg: number
+}
+
+export type WeekdayBar = {
+  /** ISO weekday: Monday is 1, Sunday is 7. */
+  weekday: number
   mg: number
 }
 
@@ -153,6 +160,19 @@ function fillDays(rows: { bucket: string; mg: number }[], from: LocalDate, to: L
 function fillHours(rows: { hour: number; mg: number }[]): HourBar[] {
   const byHour = new Map(rows.map((row) => [row.hour, row.mg]))
   return Array.from({ length: 24 }, (_, hour) => ({ hour, mg: byHour.get(hour) ?? 0 }))
+}
+
+/** Buckets day rows by the weekday of their date, summing same-weekday days together. */
+function fillWeekdays(rows: { bucket: LocalDate; mg: number }[]): WeekdayBar[] {
+  const byWeekday = new Map<number, number>()
+  for (const row of rows) {
+    const weekday = weekdayOf(row.bucket)
+    byWeekday.set(weekday, (byWeekday.get(weekday) ?? 0) + row.mg)
+  }
+  return Array.from({ length: 7 }, (_, i) => {
+    const weekday = i + 1
+    return { weekday, mg: byWeekday.get(weekday) ?? 0 }
+  })
 }
 
 /* -------------------------------------------------------------------------- */
@@ -245,6 +265,58 @@ export async function getUserTimeSeries(
 
   const { from, to } = await chartRange(db, range, userId)
   return fillDays(rows, from!, to)
+}
+
+/**
+ * Which day of the week hits hardest, summed across the period.
+ *
+ * Reads `daily_totals` rather than `drink_logs`: a weekday is a property of
+ * the calendar date, so day resolution is all this needs. Grouping the day
+ * rows by weekday in JS rather than in SQL keeps Monday-first weeks in
+ * `lib/time.ts`'s `weekdayOf`, the one place that rule is tested, rather than
+ * duplicating it as a SQLite date expression.
+ *
+ * A straight sum, not an average per weekday seen — the same tradeoff
+ * `getTeamHourHistogram` makes for hours. Over `month` or `all`, some
+ * weekdays will have occurred one more time than others; the shape still
+ * reads true, and normalising it would cost a second query for how many of
+ * each weekday actually fell in range.
+ */
+export async function getUserWeekdayHistogram(
+  db: AnyDb,
+  userId: string,
+  period: Period,
+  now = new Date(),
+): Promise<WeekdayBar[]> {
+  const range = periodToDateRange(period, now)
+
+  const rows = await db
+    .select({
+      bucket: dailyTotals.localDate,
+      mg: sql<number>`coalesce(sum(${dailyTotals.totalMg}), 0)`,
+    })
+    .from(dailyTotals)
+    .where(and(eq(dailyTotals.userId, userId), withinRange(dailyTotals.localDate, range)))
+    .groupBy(dailyTotals.localDate)
+
+  return fillWeekdays(rows)
+}
+
+/**
+ * When one person drinks, by hour of the local day, summed across the period.
+ *
+ * The personal counterpart to `getTeamHourHistogram` — same `hourRows` query,
+ * scoped to a user, for the same reason it reads `drink_logs`: the rollup has
+ * no hour resolution.
+ */
+export async function getUserHourHistogram(
+  db: AnyDb,
+  userId: string,
+  period: Period,
+  now = new Date(),
+): Promise<HourBar[]> {
+  const range = periodToDateRange(period, now)
+  return fillHours(await hourRows(db, range, userId))
 }
 
 /**
