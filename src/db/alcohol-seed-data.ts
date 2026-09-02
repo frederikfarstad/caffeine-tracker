@@ -29,6 +29,14 @@ export const ALCOHOL_TYPE_SEEDS: AlcoholTypeSeed[] = [
     sortOrder: 10,
   },
   {
+    slug: 'beer_040',
+    name: 'Beer 0.4L',
+    category: 'beer',
+    volumeMl: 400,
+    abvPercent: 4.7,
+    sortOrder: 15,
+  },
+  {
     slug: 'beer_small',
     name: 'Beer 0.33L',
     category: 'beer',
@@ -67,5 +75,21 @@ export const ALCOHOL_TYPE_SEEDS: AlcoholTypeSeed[] = [
     volumeMl: 330,
     abvPercent: 4.5,
     sortOrder: 60,
+  },
+  /**
+   * A Jäger bomb variant: a 15ml shot of Jägermeister (35%) and a 15ml shot of
+   * absinthe (60%) balanced on the rim of an energy drink, the absinthe downed
+   * first to drop the Jäger in. Only the two shots count toward `volumeMl` —
+   * the energy drink is mixer, same as the tonic in a G&T is left out of
+   * `spirit_4cl`. Equal parts at different strengths average by volume, so
+   * 47.5% is exactly (35 + 60) / 2, not a rounded estimate.
+   */
+  {
+    slug: 'hiroshima',
+    name: 'Hiroshima',
+    category: 'other',
+    volumeMl: 30,
+    abvPercent: 47.5,
+    sortOrder: 70,
   },
 ]
