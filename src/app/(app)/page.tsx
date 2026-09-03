@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { BloodAlcoholChart } from '@/components/charts/BloodAlcoholChart'
 import { BloodCaffeineChart } from '@/components/charts/BloodCaffeineChart'
 import { ConsumptionChart } from '@/components/charts/ConsumptionChart'
@@ -12,6 +13,7 @@ import { PartyPanel } from '@/components/PartyPanel'
 import { RecentAlcohol } from '@/components/RecentAlcohol'
 import { RecentDrinks } from '@/components/RecentDrinks'
 import { PeriodTabs, parsePeriod } from '@/components/PeriodTabs'
+import { SkeletonBlock } from '@/components/Skeleton'
 import { StatTile } from '@/components/StatTile'
 import { db } from '@/db'
 import { PERIOD_TITLES, formatBucketLabel, formatOsloClock, formatWeekday } from '@/lib/format'
@@ -32,7 +34,7 @@ import {
 } from '@/lib/blood-alcohol'
 import { isPartyTime } from '@/lib/party-time'
 import { localDateOf, nextLocalTimeAfter, type Period } from '@/lib/time'
-import { requireMember } from '@/server/auth'
+import { requireMember, type Member } from '@/server/auth'
 import {
   getUndoableAlcoholDrink,
   getUserAlcoholEvents,
@@ -169,92 +171,95 @@ function TrailingSection({
   )
 }
 
-export default async function PersonalDashboard({
-  searchParams,
+/**
+ * The part of the caffeine section a tap has to wait for: the panel that logs
+ * a drink, and the list that shows what you just logged. Small, fast queries
+ * only, so this tier settles long before the stats and charts below it do.
+ */
+async function CaffeineCritical({
+  member,
+  now,
+  historyDays,
 }: {
-  searchParams: Promise<{ period?: string; history?: string }>
+  member: Member
+  now: Date
+  historyDays: number
 }) {
-  const member = await requireMember()
-  const params = await searchParams
-  const period = parsePeriod(params.period)
-  // The editable list shows today by default; "show earlier" widens it.
-  const historyDays = params.history === '7' ? 7 : 0
-
-  // One instant for the whole render, so the curve, its window and the "now"
-  // rule cannot disagree by the milliseconds between two `new Date()` calls.
-  const now = new Date()
-  const profile = member.profile
-  const lookback = curveWindow([], now, profile).from
-  const alcoholLookback = alcoholCurveWindow([], now, member.bodyProfile).from
-
-  /*
-   * Party mode gates the queries, not only the markup. Somebody who has never
-   * switched it on should pay nothing for it, and `Promise.resolve` keeps that
-   * decision in one place rather than splitting this into two awaited blocks
-   * and serialising two round trips.
-   */
-  const party = member.partyMode
-
-  const [
-    drinkTypes,
-    favourites,
-    undoable,
-    today,
-    summary,
-    previousPeriodMg,
-    series,
-    weekdays,
-    hours,
-    streak,
-    intake,
-    recent,
-    alcoholTypes,
-    undoableAlcohol,
-    alcoholToday,
-    alcoholEvents,
-    recentAlcohol,
-    badges,
-    badgeContext,
-  ] = await Promise.all([
+  const [drinkTypes, favourites, undoable, today, recent] = await Promise.all([
     listActiveDrinkTypes(db),
     getUserFavouriteDrinkTypes(db, member.userId, { limit: 4, now }),
     getUndoableDrink(db, { userId: member.userId }),
     getUserSummary(db, member.userId, 'today'),
-    getUserSummary(db, member.userId, period),
-    period === 'all'
-      ? Promise.resolve(0)
-      : getUserPreviousPeriodMg(db, member.userId, period, now),
-    getUserTimeSeries(db, member.userId, period),
-    /*
-     * Always all time, independent of the period tabs — like the curve
-     * above, this is a question about a habit rather than a selected window.
-     * "Which day hits hardest" gated to "today" would render six empty bars.
-     */
-    getUserWeekdayHistogram(db, member.userId, 'all', now),
-    getUserHourHistogram(db, member.userId, period, now),
-    getUserStreak(db, member.userId),
-    getUserIntakeEvents(db, member.userId, { from: lookback, now }),
     getUserRecentDrinks(db, member.userId, { now, days: historyDays }),
-    party ? listActiveAlcoholTypes(db) : Promise.resolve([]),
-    party ? getUndoableAlcoholDrink(db, { userId: member.userId }) : Promise.resolve(null),
-    party
-      ? getUserAlcoholToday(db, member.userId, { now })
-      : Promise.resolve({ totalGrams: 0, drinkCount: 0 }),
-    party
-      ? getUserAlcoholEvents(db, member.userId, { from: alcoholLookback, now })
-      : Promise.resolve([]),
-    party ? getUserRecentAlcohol(db, member.userId, { now }) : Promise.resolve([]),
-    getBadgesFor(db, member.userId),
-    /*
-     * `localHour: null` because nothing is being logged here. The hour badges
-     * must not fire merely because somebody opened the dashboard before seven.
-     */
-    buildContext(db, member.userId, {
-      today: localDateOf(now),
-      localHour: null,
-      needDistinctTypes: true,
-    }),
   ])
+
+  return (
+    <>
+      <LogDrinkPanel
+        todayMg={today.totalMg}
+        favourites={favourites}
+        drinkTypes={drinkTypes}
+        undoable={undoable}
+      />
+      <RecentDrinks drinks={recent} days={historyDays} />
+    </>
+  )
+}
+
+/**
+ * Everything else in the caffeine section: the period's stats, the caffeine
+ * curve, and the three charts. Slower than {@link CaffeineCritical} — nothing
+ * here is needed to log or edit a drink — so it resolves under its own
+ * Suspense boundary instead of blocking that panel from appearing.
+ *
+ * Fetches `favourites` and today's summary a second time (both cheap,
+ * indexed reads) rather than sharing the copies {@link CaffeineCritical}
+ * already has: the two components resolve independently, and lifting either
+ * value above both boundaries would make them block together again — which
+ * is the thing this split exists to avoid.
+ */
+async function CaffeineSecondary({
+  member,
+  now,
+  period,
+}: {
+  member: Member
+  now: Date
+  period: Period
+}) {
+  const profile = member.profile
+  const lookback = curveWindow([], now, profile).from
+
+  const [summary, previousPeriodMg, series, weekdays, hours, streak, intake, favourites, badges, badgeContext] =
+    await Promise.all([
+      getUserSummary(db, member.userId, period),
+      period === 'all'
+        ? Promise.resolve(0)
+        : getUserPreviousPeriodMg(db, member.userId, period, now),
+      getUserTimeSeries(db, member.userId, period),
+      /*
+       * Always all time, independent of the period tabs — like the curve
+       * below, this is a question about a habit rather than a selected
+       * window. "Which day hits hardest" gated to "today" would render six
+       * empty bars.
+       */
+      getUserWeekdayHistogram(db, member.userId, 'all', now),
+      getUserHourHistogram(db, member.userId, period, now),
+      getUserStreak(db, member.userId),
+      getUserIntakeEvents(db, member.userId, { from: lookback, now }),
+      getUserFavouriteDrinkTypes(db, member.userId, { limit: 4, now }),
+      getBadgesFor(db, member.userId),
+      /*
+       * `localHour: null` because nothing is being logged here. The hour
+       * badges must not fire merely because somebody opened the dashboard
+       * before seven.
+       */
+      buildContext(db, member.userId, {
+        today: localDateOf(now),
+        localHour: null,
+        needDistinctTypes: true,
+      }),
+    ])
 
   const hasHistory = series.some((point) => point.mg > 0)
   const hasWeekdayHistory = weekdays.some((bar) => bar.mg > 0)
@@ -264,36 +269,9 @@ export default async function PersonalDashboard({
   const curve = bloodCaffeineCurve(doses, { ...bounds, now, profile })
   const inSystemMg = bodyLoadAt(doses, now, profile)
 
-  // Party mode's own curve, off the same single `now` as the caffeine one, so
-  // the window, the reading and the "now" rule cannot disagree.
-  const alcoholDoses = alcoholEvents.map((event) => ({
-    consumedAt: event.consumedAt,
-    grams: event.alcoholGrams,
-  }))
-  const alcoholBounds = alcoholCurveWindow(alcoholDoses, now, member.bodyProfile)
-  const bacCurve = bloodAlcoholCurve(alcoholDoses, {
-    ...alcoholBounds,
-    now,
-    profile: member.bodyProfile,
-  })
-  const bacNow = bacAt(alcoholDoses, now, member.bodyProfile)
-
-  /*
-   * Which half of the page leads.
-   *
-   * From four on a Friday afternoon until four on the Saturday morning the
-   * alcohol section goes first — `lib/party-time.ts` argues for those hours.
-   * It only ever reorders: both sections render either way, nothing is hidden,
-   * and none of it happens for a member who has not switched party mode on.
-   *
-   * Whichever section comes second carries the heading and the rule above it.
-   * The one that leads opens the page and needs neither.
-   */
-  const partyLeads = party && isPartyTime(now)
-
-  // The member's own most-logged drink is the honest reference for "last call":
-  // the answer depends on the size of the dose, so it should be the dose they
-  // actually reach for.
+  // The member's own most-logged drink is the honest reference for "last
+  // call": the answer depends on the size of the dose, so it should be the
+  // dose they actually reach for.
   const call = lastCall({
     doses,
     now,
@@ -302,35 +280,8 @@ export default async function PersonalDashboard({
     reference: favourites[0],
   })
 
-  const caffeineBlock = (
+  return (
     <>
-      <LogDrinkPanel
-        todayMg={today.totalMg}
-        favourites={favourites}
-        drinkTypes={drinkTypes}
-        undoable={undoable}
-      />
-
-      <RecentDrinks drinks={recent} days={historyDays} />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-        <p className="legend">Your intake</p>
-        <div className="flex items-center gap-3">
-          {/*
-           * A link rather than a nav pill. The layout already argues that a
-           * fifth pill wraps the bar to two rows on a phone, and that has not
-           * stopped being true.
-           */}
-          <Link
-            href="/wrapped"
-            className="text-sm text-oat underline decoration-hairline underline-offset-2"
-          >
-            Last month
-          </Link>
-          <PeriodTabs active={period} basePath="/" />
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile
           legend={`Caffeine · ${PERIOD_TITLES[period]}`}
@@ -443,8 +394,46 @@ export default async function PersonalDashboard({
       <BadgeList earned={badges.map((badge) => badge.badgeId)} context={badgeContext} />
     </>
   )
+}
 
-  const partyBlock = (
+/**
+ * The whole party-mode block: hero panel, recent list, BAC chart.
+ *
+ * Not split into a critical/secondary pair like the caffeine section is.
+ * `PartyPanel`'s own reading (current blood alcohol) needs the same windowed
+ * event query the BAC chart draws from — there is no cheap rollup-only number
+ * standing in for it the way `today.totalMg` stands in for the caffeine
+ * gauge — so splitting it would only buy a second copy of the same query for
+ * no independent-loading benefit. One boundary keeps party mode (opt-in, off
+ * by default) from delaying the caffeine tiers above it without pretending
+ * to a finer split it can't actually get from this data.
+ */
+async function PartySection({ member, now }: { member: Member; now: Date }) {
+  const alcoholLookback = alcoholCurveWindow([], now, member.bodyProfile).from
+
+  const [alcoholTypes, undoableAlcohol, alcoholToday, alcoholEvents, recentAlcohol] = await Promise.all([
+    listActiveAlcoholTypes(db),
+    getUndoableAlcoholDrink(db, { userId: member.userId }),
+    getUserAlcoholToday(db, member.userId, { now }),
+    getUserAlcoholEvents(db, member.userId, { from: alcoholLookback, now }),
+    getUserRecentAlcohol(db, member.userId, { now }),
+  ])
+
+  // Party mode's own curve, off the same single `now` as the caffeine one, so
+  // the window, the reading and the "now" rule cannot disagree.
+  const alcoholDoses = alcoholEvents.map((event) => ({
+    consumedAt: event.consumedAt,
+    grams: event.alcoholGrams,
+  }))
+  const alcoholBounds = alcoholCurveWindow(alcoholDoses, now, member.bodyProfile)
+  const bacCurve = bloodAlcoholCurve(alcoholDoses, {
+    ...alcoholBounds,
+    now,
+    profile: member.bodyProfile,
+  })
+  const bacNow = bacAt(alcoholDoses, now, member.bodyProfile)
+
+  return (
     <>
       <PartyPanel
         todayGrams={alcoholToday.totalGrams}
@@ -486,6 +475,116 @@ export default async function PersonalDashboard({
         </ChartFrame>
       )}
     </>
+  )
+}
+
+function CriticalSkeleton() {
+  return (
+    <section className="panel overflow-hidden">
+      <div className="flex flex-col gap-6 p-5 sm:flex-row sm:items-center sm:gap-8">
+        <SkeletonBlock className="mx-auto h-40 w-40 shrink-0 rounded-full sm:mx-0" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <SkeletonBlock className="h-3 w-24" />
+          <SkeletonBlock className="h-10 w-32" />
+          <SkeletonBlock className="h-3 w-40" />
+        </div>
+      </div>
+      <div className="border-t border-hairline bg-roast/40 p-4">
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <SkeletonBlock key={i} className="h-13 flex-1 basis-full sm:basis-[calc(50%-0.25rem)]" />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SecondarySkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <SkeletonBlock key={i} className="h-[4.5rem]" />
+        ))}
+      </div>
+      <SkeletonBlock className="h-[228px] w-full" />
+    </>
+  )
+}
+
+function PartySkeleton() {
+  return (
+    <>
+      <CriticalSkeleton />
+      <SkeletonBlock className="h-[228px] w-full" />
+    </>
+  )
+}
+
+export default async function PersonalDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; history?: string }>
+}) {
+  const member = await requireMember()
+  const params = await searchParams
+  const period = parsePeriod(params.period)
+  // The editable list shows today by default; "show earlier" widens it.
+  const historyDays = params.history === '7' ? 7 : 0
+
+  // One instant for the whole render, so every Suspense-bounded section below
+  // agrees on the same "now" even though they resolve at different times.
+  const now = new Date()
+  const party = member.partyMode
+
+  /*
+   * Which half of the page leads.
+   *
+   * From four on a Friday afternoon until four on the Saturday morning the
+   * alcohol section goes first — `lib/party-time.ts` argues for those hours.
+   * It only ever reorders: both sections render either way, nothing is hidden,
+   * and none of it happens for a member who has not switched party mode on.
+   *
+   * Whichever section comes second carries the heading and the rule above it.
+   * The one that leads opens the page and needs neither.
+   */
+  const partyLeads = party && isPartyTime(now)
+
+  const caffeineBlock = (
+    <>
+      <Suspense fallback={<CriticalSkeleton />}>
+        <CaffeineCritical member={member} now={now} historyDays={historyDays} />
+      </Suspense>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <p className="legend">Your intake</p>
+        <div className="flex items-center gap-3">
+          {/*
+           * A link rather than a nav pill. The layout already argues that a
+           * fifth pill wraps the bar to two rows on a phone, and that has not
+           * stopped being true.
+           */}
+          <Link
+            href="/wrapped"
+            className="text-sm text-oat underline decoration-hairline underline-offset-2"
+          >
+            Last month
+          </Link>
+          <PeriodTabs active={period} basePath="/" />
+        </div>
+      </div>
+
+      <Suspense fallback={<SecondarySkeleton />}>
+        <CaffeineSecondary member={member} now={now} period={period} />
+      </Suspense>
+    </>
+  )
+
+  const partyBlock = (
+    <Suspense fallback={<PartySkeleton />}>
+      <PartySection member={member} now={now} />
+    </Suspense>
   )
 
   return (
