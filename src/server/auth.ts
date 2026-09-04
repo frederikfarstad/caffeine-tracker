@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
 import { redirect } from 'next/navigation'
+import { cache } from 'react'
 import { db } from '@/db'
 import { accounts, members, sessions, users, verificationTokens } from '@/db/schema'
 import { bodyProfileFrom, type BodyProfile } from '@/lib/blood-alcohol'
@@ -118,8 +119,13 @@ function toMember(
  * someone takes effect immediately instead of whenever their token expires.
  * That costs one indexed row read per request — and since the whole row comes
  * back anyway, the member's personal settings ride along for free.
+ *
+ * `cache()` only dedupes calls within this one request (the layout and the
+ * page both need it), not across requests — a removed member is still locked
+ * out on their very next request, which is the guarantee the paragraph above
+ * is protecting.
  */
-export async function currentMember(): Promise<Member | null> {
+export const currentMember = cache(async function currentMember(): Promise<Member | null> {
   const user = await currentUser()
   if (!user) return null
 
@@ -127,7 +133,7 @@ export async function currentMember(): Promise<Member | null> {
   if (!member) return null
 
   return toMember(member, user)
-}
+})
 
 /**
  * The single gate protecting the app.
@@ -135,14 +141,14 @@ export async function currentMember(): Promise<Member | null> {
  * Not signed in at all goes to sign-in; signed in but without a membership row
  * goes to the join-code form.
  */
-export async function requireMember(): Promise<Member> {
+export const requireMember = cache(async function requireMember(): Promise<Member> {
   const user = await requireSignedIn()
 
   const [member] = await db.select().from(members).where(eq(members.userId, user.id))
   if (!member) redirect('/join')
 
   return toMember(member, user)
-}
+})
 
 export async function requireAdmin(): Promise<Member> {
   const member = await requireMember()

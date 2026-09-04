@@ -1,9 +1,11 @@
 'use server'
 
 import { refresh } from 'next/cache'
+import { after } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/db'
 import { requireMember } from '@/server/auth'
+import { recomputeBadgesFor } from '@/server/badges'
 import {
   deleteDrinkLog,
   logDrink,
@@ -100,6 +102,12 @@ export async function undoLastDrinkAction(): Promise<ActionResult> {
           : 'That drink is too old to undo.',
     }
   }
+
+  // Badges are a full-team replay (`pioneer` depends on other members' logs),
+  // so it runs after the response goes out rather than inside it. Correct
+  // again by the very next load; this response might still show a badge the
+  // undone drink is about to cost.
+  after(() => recomputeBadgesFor(db, result.affectedUserIds))
 
   refresh()
   return { ok: true, message: null }
@@ -210,6 +218,12 @@ export async function deleteDrinkLogAction(logId: number): Promise<ActionResult>
   if (!result.ok) {
     return { ok: false, message: "That drink isn't there any more." }
   }
+
+  // Badges are a full-team replay (`pioneer` depends on other members' logs),
+  // so it runs after the response goes out rather than inside it. Correct
+  // again by the very next load; this response might still show a badge the
+  // deleted drink is about to cost.
+  after(() => recomputeBadgesFor(db, result.affectedUserIds))
 
   refresh()
   return { ok: true, message: null }

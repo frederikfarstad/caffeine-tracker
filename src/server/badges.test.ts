@@ -10,6 +10,7 @@ import {
   getBadgesForMany,
   getEarnedBadgeIds,
   rebuildBadges,
+  recomputeBadgesFor,
 } from './badges'
 
 let db: TestDb
@@ -199,7 +200,11 @@ describe('revoking', () => {
     expect(logged.ok).toBe(true)
     expect(await getEarnedBadgeIds(db, 'ada')).toContain('dawn-patrol')
 
-    await undoLastDrink(db, { userId: 'ada', now: oslo('2026-08-26', 6) })
+    // The mutation itself no longer recomputes badges — that's deferred to
+    // after the response, via `after()`, in the Server Action layer. Calling
+    // it explicitly here is what that deferred call does in production.
+    const undone = await undoLastDrink(db, { userId: 'ada', now: oslo('2026-08-26', 6) })
+    if (undone.ok) await recomputeBadgesFor(db, undone.affectedUserIds)
 
     expect(await getEarnedBadgeIds(db, 'ada')).toEqual([])
     expect(await findBadgeDrift(db)).toEqual([])
@@ -231,7 +236,12 @@ describe('revoking', () => {
     expect(logged.ok && logged.logId).toBeTruthy()
     expect(await getEarnedBadgeIds(db, 'ada')).toContain('pioneer')
 
-    if (logged.ok) await deleteDrinkLog(db, { userId: 'bo', logId: logged.logId })
+    if (logged.ok) {
+      const deleted = await deleteDrinkLog(db, { userId: 'bo', logId: logged.logId })
+      // Deferred to `after()` in production; explicit here for the same
+      // reason as the undo test above.
+      if (deleted.ok) await recomputeBadgesFor(db, deleted.affectedUserIds)
+    }
 
     expect(await getEarnedBadgeIds(db, 'ada')).not.toContain('pioneer')
     expect(await findBadgeDrift(db)).toEqual([])
