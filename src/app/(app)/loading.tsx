@@ -10,12 +10,14 @@ export default function Loading() {
   return (
     <>
       <section className="panel overflow-hidden">
-        <div className="flex flex-col gap-6 p-5 sm:flex-row sm:items-center sm:gap-8">
-          <SkeletonBlock className="mx-auto h-40 w-40 shrink-0 rounded-full sm:mx-0" />
+        <div className="flex min-h-[213px] flex-col gap-6 p-5 sm:flex-row sm:items-center sm:gap-8">
+          <SkeletonBlock className="mx-auto h-[173px] w-[220px] shrink-0 sm:mx-0" />
           <div className="min-w-0 flex-1 space-y-2">
             <SkeletonBlock className="h-3 w-24" />
             <SkeletonBlock className="h-10 w-32" />
             <SkeletonBlock className="h-3 w-40" />
+            <SkeletonBlock className="h-3 w-full" />
+            <SkeletonBlock className="h-3 w-3/4" />
           </div>
         </div>
         <div className="border-t border-hairline bg-roast/40 p-4">
@@ -24,6 +26,11 @@ export default function Loading() {
               <SkeletonBlock key={i} className="h-13 flex-1 basis-full sm:basis-[calc(50%-0.25rem)]" />
             ))}
           </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <SkeletonBlock className="h-7 w-28" />
+            <SkeletonBlock className="h-7 w-36" />
+          </div>
+          <SkeletonBlock className="mt-3 h-6 w-full" />
         </div>
       </section>
 
@@ -38,11 +45,11 @@ export default function Loading() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
-          <SkeletonBlock key={i} className="h-[4.5rem]" />
+          <SkeletonBlock key={i} className="h-[6rem]" />
         ))}
       </div>
 
-      <SkeletonBlock className="h-[228px] w-full" />
+      <SkeletonBlock className="h-[320px] w-full" />
     </>
   )
 }

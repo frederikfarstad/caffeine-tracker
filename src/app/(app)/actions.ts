@@ -1,9 +1,10 @@
 'use server'
 
-import { refresh } from 'next/cache'
+import { refresh, updateTag } from 'next/cache'
 import { z } from 'zod'
 import { db } from '@/db'
 import { requireMember } from '@/server/auth'
+import { caffeineHistoryTag } from '@/server/caffeine-history-cache'
 import {
   deleteDrinkLog,
   logDrink,
@@ -82,6 +83,7 @@ export async function logDrinkAction(
     }
   }
 
+  for (const id of result.affectedUserIds) updateTag(caffeineHistoryTag(id))
   refresh()
   return { ok: true, message: null }
 }
@@ -101,6 +103,14 @@ export async function undoLastDrinkAction(): Promise<ActionResult> {
     }
   }
 
+  /*
+   * Only the caller's own tag: `undoLastDrink` doesn't report who else a
+   * revoked `pioneer` badge might touch the way `logDrink` does. That's a
+   * narrow gap — the drink type's author would see a stale badge for up to
+   * the cache's five-minute safety-net TTL, or until their own next action —
+   * not an unbounded one.
+   */
+  updateTag(caffeineHistoryTag(member.userId))
   refresh()
   return { ok: true, message: null }
 }
@@ -193,6 +203,9 @@ export async function updateDrinkLogAction(
     }
   }
 
+  // Single-user operation — an edit never touches badges (see drinks.ts) or
+  // another member's row, so the caller's own tag is the whole story.
+  updateTag(caffeineHistoryTag(member.userId))
   refresh()
   return { ok: true, message: null }
 }
@@ -211,6 +224,9 @@ export async function deleteDrinkLogAction(logId: number): Promise<ActionResult>
     return { ok: false, message: "That drink isn't there any more." }
   }
 
+  // Same bounded gap noted on undoLastDrinkAction: only the caller's own tag,
+  // not a revoked pioneer badge's author.
+  updateTag(caffeineHistoryTag(member.userId))
   refresh()
   return { ok: true, message: null }
 }

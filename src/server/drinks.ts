@@ -164,7 +164,7 @@ async function pruneEmptyRollup(tx: RollupTx, userId: string, localDates: string
 }
 
 export type LogDrinkResult =
-  | { ok: true; logId: number; caffeineMg: number; localDate: string }
+  | { ok: true; logId: number; caffeineMg: number; localDate: string; affectedUserIds: string[] }
   | { ok: false; reason: 'unknown-drink' | 'no-base-volume' }
 
 /**
@@ -251,7 +251,13 @@ export async function logDrink(
     return log.id
   })
 
-  return { ok: true, logId, caffeineMg, localDate }
+  // The drinker, and the drink type's author too when `pioneer` was in play
+  // for them — the same pair `grantBadge` above just acted on, reported so
+  // the caller knows whose cached history to invalidate.
+  const affectedUserIds =
+    type.createdBy && type.createdBy !== userId ? [userId, type.createdBy] : [userId]
+
+  return { ok: true, logId, caffeineMg, localDate, affectedUserIds }
 }
 
 /**
