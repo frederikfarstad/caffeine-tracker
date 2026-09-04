@@ -1,5 +1,18 @@
 import Link from 'next/link'
+import type { ComponentProps, ComponentType } from 'react'
 import { PARTY_PERIODS, type PartyPeriod, type Period } from '@/lib/time'
+
+/**
+ * `next/link`'s public type hasn't caught up with its own runtime: the
+ * app-dir `Link` implementation reads `unstable_dynamicOnHover` (confirmed in
+ * `next/dist/client/app-dir/link.js`), but `next/link`'s exported prop type
+ * doesn't list it. Widening the type at this one call site, rather than
+ * reaching into Next's internal module path, is the narrower workaround —
+ * safe to delete once the public type includes it.
+ */
+const HoverPrefetchLink = Link as ComponentType<
+  ComponentProps<typeof Link> & { unstable_dynamicOnHover?: boolean }
+>
 
 const LABELS: Record<Period, string> = {
   today: 'Today',
@@ -20,6 +33,13 @@ const ORDER: Period[] = ['today', 'week', 'month', 'all']
  * show. That is a real constraint rather than a layout choice — see
  * {@link PartyPeriod} — so the caller passes the set it can actually answer
  * instead of this component hiding a tab that would otherwise work.
+ *
+ * `unstable_dynamicOnHover` starts the full data fetch for a tab the moment a
+ * pointer hovers it, rather than only on click — a real head start on desktop
+ * without the cost of `prefetch={true}`, which would fetch every tab's full
+ * data on every page view regardless of whether anyone touches another tab.
+ * Skipped on the active tab: there is nothing to prefetch for the page
+ * already on screen.
  */
 export function PeriodTabs({
   active,
@@ -35,10 +55,11 @@ export function PeriodTabs({
       {periods.map((period) => {
         const isActive = period === active
         return (
-          <Link
+          <HoverPrefetchLink
             key={period}
             href={period === 'today' ? basePath : `${basePath}?period=${period}`}
             aria-current={isActive ? 'page' : undefined}
+            unstable_dynamicOnHover={!isActive}
             className={`rounded-md px-3 py-1.5 font-gauge text-[0.6875rem] tracking-[0.12em] uppercase transition-colors ${
               isActive
                 ? 'bg-crema text-roast'
@@ -46,7 +67,7 @@ export function PeriodTabs({
             }`}
           >
             {LABELS[period]}
-          </Link>
+          </HoverPrefetchLink>
         )
       })}
     </nav>
