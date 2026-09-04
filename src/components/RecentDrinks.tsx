@@ -1,9 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { useOptimistic, useState, useTransition } from 'react'
 import { deleteDrinkLogAction, updateDrinkLogAction } from '@/app/(app)/actions'
 import { formatOsloClock } from '@/lib/format'
+import {
+  applyOptimisticListAction,
+  type OptimisticListAction,
+  type WithOptimisticTime,
+} from '@/lib/optimisticList'
 import type { RecentDrink } from '@/server/drinks'
 
 /**
@@ -19,15 +24,26 @@ import type { RecentDrink } from '@/server/drinks'
  * this list for a rarer case.
  */
 export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: number }) {
+  const [optimisticDrinks, applyOptimistic] = useOptimistic<
+    WithOptimisticTime<RecentDrink>[],
+    OptimisticListAction
+  >(drinks, applyOptimisticListAction)
   const [pending, startTransition] = useTransition()
   const [editing, setEditing] = useState<number | null>(null)
   const [time, setTime] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  function run(action: () => Promise<{ ok: boolean; message: string | null }>) {
+  function run(
+    update: OptimisticListAction,
+    action: () => Promise<{ ok: boolean; message: string | null }>,
+  ) {
     startTransition(async () => {
       setError(null)
+      applyOptimistic(update)
       const result = await action()
+      // A failed action leaves the optimistic list to unwind on its own once
+      // this transition settles against the unchanged `drinks` prop; all
+      // that's left is to say what went wrong.
       if (!result.ok) setError(result.message)
       else setEditing(null)
     })
@@ -51,9 +67,11 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
       </div>
 
       <ul className="divide-y divide-hairline">
-        {drinks.map((drink) => (
+        {optimisticDrinks.map((drink) => (
           <li key={drink.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
-            <span className="font-gauge text-xs text-oat">{formatOsloClock(drink.consumedAt)}</span>
+            <span className="font-gauge text-xs text-oat">
+              {drink.optimisticTimeLabel ?? formatOsloClock(drink.consumedAt)}
+            </span>
             <span className="min-w-0 flex-1 text-sm text-foam">
               {drink.name}
               {drink.volumeMl && (
@@ -74,7 +92,11 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                 <button
                   type="button"
                   disabled={pending || !time}
-                  onClick={() => run(() => updateDrinkLogAction(drink.id, { time }))}
+                  onClick={() =>
+                    run({ type: 'edit', id: drink.id, timeLabel: time }, () =>
+                      updateDrinkLogAction(drink.id, { time }),
+                    )
+                  }
                   className="font-gauge text-[0.6875rem] tracking-[0.08em] text-crema uppercase underline decoration-crema/50 underline-offset-4 disabled:opacity-60"
                 >
                   Save
@@ -94,7 +116,7 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                   disabled={pending}
                   onClick={() => {
                     setEditing(drink.id)
-                    setTime(formatOsloClock(drink.consumedAt))
+                    setTime(drink.optimisticTimeLabel ?? formatOsloClock(drink.consumedAt))
                   }}
                   className="font-gauge text-[0.6875rem] tracking-[0.08em] text-foam uppercase underline decoration-oat/60 underline-offset-4 transition-colors hover:decoration-foam disabled:opacity-60"
                 >
@@ -103,7 +125,7 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => run(() => deleteDrinkLogAction(drink.id))}
+                  onClick={() => run({ type: 'delete', id: drink.id }, () => deleteDrinkLogAction(drink.id))}
                   className="font-gauge text-[0.6875rem] tracking-[0.08em] text-oat uppercase underline decoration-oat/60 underline-offset-4 transition-colors hover:text-scald hover:decoration-scald disabled:opacity-60"
                 >
                   Delete
