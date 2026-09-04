@@ -1,8 +1,9 @@
 'use server'
 
-import { refresh } from 'next/cache'
+import { refresh, updateTag } from 'next/cache'
 import { db } from '@/db'
 import { requireMember } from '@/server/auth'
+import { caffeineHistoryTag } from '@/server/caffeine-history-cache'
 import { parseSettings, saveMemberSettings } from '@/server/settings'
 
 export type SettingsFormState = { error: string | null; notice: string | null }
@@ -33,6 +34,9 @@ export async function saveSettings(
 
   await saveMemberSettings(db, member.userId, parsed.settings)
 
+  // A new half-life changes how wide a lookback window the curve needs; the
+  // cached one was computed from the old setting.
+  updateTag(caffeineHistoryTag(member.userId))
   refresh()
   return { error: null, notice: 'Saved. Your curve and last call now use these.' }
 }
