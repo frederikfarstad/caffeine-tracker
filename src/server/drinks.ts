@@ -5,7 +5,7 @@ import type { TestDb } from '@/db/test-db'
 import type { DrinkCategory } from '@/lib/caffeine'
 import { scaleForVolume } from '@/lib/serving'
 import { addLocalDays, instantFromLocalTime, localBuckets, localDateOf } from '@/lib/time'
-import { awardBadges, grantBadge, recomputeBadgesFor } from './badges'
+import { awardBadges, grantBadge } from './badges'
 
 type AnyDb = Db | TestDb
 
@@ -282,7 +282,7 @@ async function badgeHoldersAffectedBy(
 }
 
 export type UndoResult =
-  | { ok: true; caffeineMg: number }
+  | { ok: true; caffeineMg: number; affectedUserIds: string[] }
   | { ok: false; reason: 'nothing-to-undo' | 'too-old' }
 
 /**
@@ -324,12 +324,13 @@ export async function undoLastDrink(
       mg: last.caffeineMg,
     })
     await pruneEmptyRollup(tx, userId, [last.localDate])
-    // A badge the undone drink earned must go with it, or the drift check
-    // would report it for ever.
-    await recomputeBadgesFor(tx, affected)
   })
 
-  return { ok: true, caffeineMg: last.caffeineMg }
+  // A badge the undone drink earned must go with it, or the drift check would
+  // report it for ever — but the recompute is a full-team replay (`pioneer`
+  // depends on other members' logs), so the caller runs it after responding
+  // rather than paying for it inside this transaction.
+  return { ok: true, caffeineMg: last.caffeineMg, affectedUserIds: affected }
 }
 
 function categoryDelta(category: DrinkCategory) {
@@ -464,7 +465,9 @@ export async function updateDrinkLog(
   return { ok: true }
 }
 
-export type DeleteDrinkLogResult = { ok: true } | { ok: false; reason: 'not-found' }
+export type DeleteDrinkLogResult =
+  | { ok: true; affectedUserIds: string[] }
+  | { ok: false; reason: 'not-found' }
 
 /**
  * Delete one of your own drinks, however old.
@@ -494,12 +497,13 @@ export async function deleteDrinkLog(
       mg: log.caffeineMg,
     })
     await pruneEmptyRollup(tx, userId, [log.localDate])
-    // A badge the deleted drink earned must go with it, or the drift check
-    // would report it for ever.
-    await recomputeBadgesFor(tx, affected)
   })
 
-  return { ok: true }
+  // A badge the deleted drink earned must go with it, or the drift check
+  // would report it for ever — but the recompute is a full-team replay
+  // (`pioneer` depends on other members' logs), so the caller runs it after
+  // responding rather than paying for it inside this transaction.
+  return { ok: true, affectedUserIds: affected }
 }
 
 export type RecentDrink = {

@@ -18,11 +18,11 @@ import {
  *
  * Invalidated with `updateTag` (not `revalidateTag`) from every Server Action
  * that can change what it covers, so the same request's own `refresh()` sees
- * the write. `logDrink` invalidates both the drinker and the drink type's
- * author when a `pioneer` badge is in play; `undoLastDrink`/`deleteDrinkLog`
- * currently invalidate only the acting user, which is a narrow, bounded gap
- * for a `pioneer` badge revoked by someone else's delete — see the comments
- * at their call sites in `actions.ts`.
+ * the write — for every one of `logDrink`/`undoLastDrink`/`deleteDrinkLog`,
+ * using that function's own `affectedUserIds` (the drinker, and the drink
+ * type's author too when a `pioneer` badge is in play), not just the acting
+ * user, so a badge revoked or granted by someone else's action doesn't wait
+ * on the five-minute safety-net TTL to stop looking stale for them.
  */
 export function caffeineHistoryTag(userId: string): string {
   return `caffeine-history:${userId}`
