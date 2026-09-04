@@ -386,6 +386,33 @@ describe('undoLastDrink', () => {
     expect(logs).toHaveLength(1)
     expect(logs[0].caffeineMg).toBe(95)
   })
+
+  /*
+   * `affectedUserIds` is what tells the caller who to recompute badges for,
+   * since that recompute now happens outside this function (deferred to
+   * `after()` in the Server Action layer). If this silently returned the
+   * wrong set, badges would silently stop being revoked in production with
+   * nothing to catch it.
+   */
+  it('reports only the drinker as affected for an ordinary undo', async () => {
+    await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    const result = await undoLastDrink(db, { userId: 'ada', now })
+    expect(result).toMatchObject({ ok: true, affectedUserIds: ['ada'] })
+  })
+
+  it('reports both drinker and author when undoing someone else’s custom drink', async () => {
+    await db.insert(drinkTypes).values({
+      slug: 'linn_special',
+      name: "Linn's special",
+      category: 'other',
+      caffeineMg: 80,
+      createdBy: 'linn',
+    })
+    await logDrink(db, { userId: 'ada', slug: 'linn_special', now })
+
+    const result = await undoLastDrink(db, { userId: 'ada', now })
+    expect(result.ok && result.affectedUserIds.sort()).toEqual(['ada', 'linn'])
+  })
 })
 
 describe('getUndoableDrink', () => {
@@ -684,6 +711,34 @@ describe('deleteDrinkLog', () => {
       reason: 'not-found',
     })
     expect(await db.select().from(drinkLogs)).toHaveLength(1)
+  })
+
+  /*
+   * Same reasoning as `undoLastDrink`'s equivalent tests: `affectedUserIds` is
+   * the contract the deferred `after()` recompute relies on to know who to
+   * touch.
+   */
+  it('reports only the drinker as affected for an ordinary delete', async () => {
+    const logged = await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    if (!logged.ok) throw new Error('unreachable')
+
+    const result = await deleteDrinkLog(db, { userId: 'ada', logId: logged.logId })
+    expect(result).toMatchObject({ ok: true, affectedUserIds: ['ada'] })
+  })
+
+  it('reports both drinker and author when deleting someone else’s custom drink', async () => {
+    await db.insert(drinkTypes).values({
+      slug: 'linn_special',
+      name: "Linn's special",
+      category: 'other',
+      caffeineMg: 80,
+      createdBy: 'linn',
+    })
+    const logged = await logDrink(db, { userId: 'ada', slug: 'linn_special', now })
+    if (!logged.ok) throw new Error('unreachable')
+
+    const result = await deleteDrinkLog(db, { userId: 'ada', logId: logged.logId })
+    expect(result.ok && result.affectedUserIds.sort()).toEqual(['ada', 'linn'])
   })
 })
 
