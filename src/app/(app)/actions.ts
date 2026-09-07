@@ -1,11 +1,12 @@
 'use server'
 
-import { refresh } from 'next/cache'
+import { refresh, updateTag } from 'next/cache'
 import { after } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/db'
 import { requireMember } from '@/server/auth'
 import { recomputeBadgesFor } from '@/server/badges'
+import { caffeineHistoryTag } from '@/server/caffeine-history-cache'
 import {
   deleteDrinkLog,
   logDrink,
@@ -84,6 +85,7 @@ export async function logDrinkAction(
     }
   }
 
+  for (const id of result.affectedUserIds) updateTag(caffeineHistoryTag(id))
   refresh()
   return { ok: true, message: null }
 }
@@ -108,6 +110,7 @@ export async function undoLastDrinkAction(): Promise<ActionResult> {
   // again by the very next load; this response might still show a badge the
   // undone drink is about to cost.
   after(() => recomputeBadgesFor(db, result.affectedUserIds))
+  for (const id of result.affectedUserIds) updateTag(caffeineHistoryTag(id))
 
   refresh()
   return { ok: true, message: null }
@@ -201,6 +204,9 @@ export async function updateDrinkLogAction(
     }
   }
 
+  // Single-user operation — an edit never touches badges (see drinks.ts) or
+  // another member's row, so the caller's own tag is the whole story.
+  updateTag(caffeineHistoryTag(member.userId))
   refresh()
   return { ok: true, message: null }
 }
@@ -224,6 +230,7 @@ export async function deleteDrinkLogAction(logId: number): Promise<ActionResult>
   // again by the very next load; this response might still show a badge the
   // deleted drink is about to cost.
   after(() => recomputeBadgesFor(db, result.affectedUserIds))
+  for (const id of result.affectedUserIds) updateTag(caffeineHistoryTag(id))
 
   refresh()
   return { ok: true, message: null }

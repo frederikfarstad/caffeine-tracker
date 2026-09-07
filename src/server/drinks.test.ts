@@ -156,6 +156,30 @@ describe('logDrink', () => {
 
     expect(await findRollupDrift(db)).toEqual([])
   })
+
+  /*
+   * `affectedUserIds` is what tells a caller which cached per-user data
+   * (see `getCaffeineHistory`) to invalidate. If this silently returned the
+   * wrong set, a badge earned by someone other than the drinker (`pioneer`)
+   * could go on showing stale cached data with nothing to catch it.
+   */
+  it('reports only the drinker as affected for an ordinary log', async () => {
+    const result = await logDrink(db, { userId: 'ada', slug: 'coffee', now })
+    expect(result).toMatchObject({ ok: true, affectedUserIds: ['ada'] })
+  })
+
+  it('reports both drinker and author when logging someone else’s custom drink', async () => {
+    await db.insert(drinkTypes).values({
+      slug: 'linn_special',
+      name: "Linn's special",
+      category: 'other',
+      caffeineMg: 80,
+      createdBy: 'linn',
+    })
+
+    const result = await logDrink(db, { userId: 'ada', slug: 'linn_special', now })
+    expect(result.ok && result.affectedUserIds.sort()).toEqual(['ada', 'linn'])
+  })
 })
 
 describe('logDrink with an adjusted volume', () => {
