@@ -81,7 +81,15 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
             <span className="font-gauge text-xs text-oat">{drink.caffeineMg} mg</span>
 
             {editing === drink.id ? (
-              <span className="flex w-full items-center gap-2 sm:w-auto">
+              <form
+                className="flex w-full items-center gap-2 sm:w-auto"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  run({ type: 'edit', id: drink.id, timeLabel: time }, () =>
+                    updateDrinkLogAction(drink.id, { time }),
+                  )
+                }}
+              >
                 <input
                   type="time"
                   value={time}
@@ -90,13 +98,8 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                   className="font-gauge rounded-md border border-hairline bg-roast px-2 py-1 text-sm text-foam"
                 />
                 <button
-                  type="button"
+                  type="submit"
                   disabled={pending || !time}
-                  onClick={() =>
-                    run({ type: 'edit', id: drink.id, timeLabel: time }, () =>
-                      updateDrinkLogAction(drink.id, { time }),
-                    )
-                  }
                   className="font-gauge text-[0.6875rem] tracking-[0.08em] text-crema uppercase underline decoration-crema/50 underline-offset-4 disabled:opacity-60"
                 >
                   Save
@@ -108,7 +111,7 @@ export function RecentDrinks({ drinks, days }: { drinks: RecentDrink[]; days: nu
                 >
                   Cancel
                 </button>
-              </span>
+              </form>
             ) : (
               <span className="flex items-center gap-2">
                 <button
