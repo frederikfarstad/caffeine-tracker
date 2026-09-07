@@ -33,7 +33,7 @@ import {
   drivingOutlook,
 } from '@/lib/blood-alcohol'
 import { isPartyTime } from '@/lib/party-time'
-import { localDateOf, nextLocalTimeAfter, type Period } from '@/lib/time'
+import { nextLocalTimeAfter, type Period } from '@/lib/time'
 import { requireMember, type Member } from '@/server/auth'
 import {
   getUndoableAlcoholDrink,
@@ -42,17 +42,14 @@ import {
   getUserRecentAlcohol,
   listActiveAlcoholTypes,
 } from '@/server/alcohol'
-import { buildContext, getBadgesFor } from '@/server/badges'
+import { getCaffeineHistory } from '@/server/caffeine-history-cache'
 import { getUndoableDrink, getUserRecentDrinks, listActiveDrinkTypes } from '@/server/drinks'
 import {
   getUserFavouriteDrinkTypes,
   getUserHourHistogram,
-  getUserIntakeEvents,
   getUserPreviousPeriodMg,
-  getUserStreak,
   getUserSummary,
   getUserTimeSeries,
-  getUserWeekdayHistogram,
 } from '@/server/stats'
 
 const PREVIOUS_PERIOD_LABEL: Record<Exclude<Period, 'all'>, string> = {
@@ -228,38 +225,32 @@ async function CaffeineSecondary({
   period: Period
 }) {
   const profile = member.profile
-  const lookback = curveWindow([], now, profile).from
 
-  const [summary, previousPeriodMg, series, weekdays, hours, streak, intake, favourites, badges, badgeContext] =
-    await Promise.all([
-      getUserSummary(db, member.userId, period),
-      period === 'all'
-        ? Promise.resolve(0)
-        : getUserPreviousPeriodMg(db, member.userId, period, now),
-      getUserTimeSeries(db, member.userId, period),
-      /*
-       * Always all time, independent of the period tabs — like the curve
-       * below, this is a question about a habit rather than a selected
-       * window. "Which day hits hardest" gated to "today" would render six
-       * empty bars.
-       */
-      getUserWeekdayHistogram(db, member.userId, 'all', now),
-      getUserHourHistogram(db, member.userId, period, now),
-      getUserStreak(db, member.userId),
-      getUserIntakeEvents(db, member.userId, { from: lookback, now }),
-      getUserFavouriteDrinkTypes(db, member.userId, { limit: 4, now }),
-      getBadgesFor(db, member.userId),
-      /*
-       * `localHour: null` because nothing is being logged here. The hour
-       * badges must not fire merely because somebody opened the dashboard
-       * before seven.
-       */
-      buildContext(db, member.userId, {
-        today: localDateOf(now),
-        localHour: null,
-        needDistinctTypes: true,
-      }),
-    ])
+  /*
+   * Everything period-dependent, fetched fresh on every render — a period
+   * tab click is a new request either way, so there is nothing to cache here.
+   */
+  const [summary, previousPeriodMg, series, hours] = await Promise.all([
+    getUserSummary(db, member.userId, period),
+    period === 'all'
+      ? Promise.resolve(0)
+      : getUserPreviousPeriodMg(db, member.userId, period, now),
+    getUserTimeSeries(db, member.userId, period),
+    getUserHourHistogram(db, member.userId, period, now),
+  ])
+
+  /*
+   * Everything else — the curve's doses, the weekday breakdown, badges, the
+   * streak — is the same regardless of which period tab is active, so it is
+   * cached per user rather than recomputed on every one of those clicks. See
+   * `getCaffeineHistory` for the invalidation story.
+   */
+  const history = await getCaffeineHistory(member.userId, profile)
+  const { favourites, weekdays, badgeIds, badgeContext, streak } = history
+  const intake = history.intakeEventsMs.map((event) => ({
+    consumedAt: new Date(event.consumedAtMs),
+    caffeineMg: event.caffeineMg,
+  }))
 
   const hasHistory = series.some((point) => point.mg > 0)
   const hasWeekdayHistory = weekdays.some((bar) => bar.mg > 0)
@@ -391,7 +382,7 @@ async function CaffeineSecondary({
         </ChartFrame>
       )}
 
-      <BadgeList earned={badges.map((badge) => badge.badgeId)} context={badgeContext} />
+      <BadgeList earned={badgeIds} context={badgeContext} />
     </>
   )
 }
@@ -478,15 +469,26 @@ async function PartySection({ member, now }: { member: Member; now: Date }) {
   )
 }
 
-function CriticalSkeleton() {
+/*
+ * Sizes below (the gauge block, the button row, ~320px per chart, ~96px per
+ * stat tile, ~421px for the fixed-length badge list) are measured against the
+ * real components with sample data, not guessed — a fallback sized smaller
+ * than what replaces it is exactly what produces a visible jump the moment
+ * the real content streams in.
+ */
+
+/** The hero panel shape shared by `LogDrinkPanel` and `PartyPanel`. */
+function HeroPanelSkeleton() {
   return (
     <section className="panel overflow-hidden">
-      <div className="flex flex-col gap-6 p-5 sm:flex-row sm:items-center sm:gap-8">
-        <SkeletonBlock className="mx-auto h-40 w-40 shrink-0 rounded-full sm:mx-0" />
+      <div className="flex min-h-[213px] flex-col gap-6 p-5 sm:flex-row sm:items-center sm:gap-8">
+        <SkeletonBlock className="mx-auto h-[173px] w-[220px] shrink-0 sm:mx-0" />
         <div className="min-w-0 flex-1 space-y-2">
           <SkeletonBlock className="h-3 w-24" />
           <SkeletonBlock className="h-10 w-32" />
           <SkeletonBlock className="h-3 w-40" />
+          <SkeletonBlock className="h-3 w-full" />
+          <SkeletonBlock className="h-3 w-3/4" />
         </div>
       </div>
       <div className="border-t border-hairline bg-roast/40 p-4">
@@ -495,20 +497,71 @@ function CriticalSkeleton() {
             <SkeletonBlock key={i} className="h-13 flex-1 basis-full sm:basis-[calc(50%-0.25rem)]" />
           ))}
         </div>
+        {/* The search-drinks/earlier-time row, and the error/undo row below
+         * the grid in both `LogDrinkPanel` and `PartyPanel` — easy to forget
+         * since neither is the grid itself, both add real height. */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <SkeletonBlock className="h-7 w-28" />
+          <SkeletonBlock className="h-7 w-36" />
+        </div>
+        <SkeletonBlock className="mt-3 h-6 w-full" />
       </div>
     </section>
   )
 }
 
+/** The recent-list shape shared by `RecentDrinks` and `RecentAlcohol`. */
+function RecentListSkeleton() {
+  return (
+    <section className="panel space-y-3 p-4">
+      <SkeletonBlock className="h-3 w-28" />
+      <div className="space-y-2">
+        {Array.from({ length: 3 }, (_, i) => (
+          <SkeletonBlock key={i} className="h-8 w-full" />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** One `ChartFrame`-shaped block, legend and title included in the height. */
+function ChartSkeleton() {
+  return <SkeletonBlock className="h-[320px] w-full" />
+}
+
+function CriticalSkeleton() {
+  return (
+    <>
+      <HeroPanelSkeleton />
+      <RecentListSkeleton />
+    </>
+  )
+}
+
+/**
+ * Sized for the common case — an established member with history in every
+ * section — not the empty state a brand-new member would see. Undershooting
+ * for that rarer case costs one small growth on someone's very first load;
+ * undershooting for everyone every time, which is what the previous, much
+ * shorter estimate did, is the actual bug this fixes.
+ */
 function SecondarySkeleton() {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
-          <SkeletonBlock key={i} className="h-[4.5rem]" />
+          <SkeletonBlock key={i} className="h-[6rem]" />
         ))}
       </div>
-      <SkeletonBlock className="h-[228px] w-full" />
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <SkeletonBlock className="h-[6rem]" />
+        <SkeletonBlock className="h-[6rem]" />
+      </div>
+      <ChartSkeleton />
+      <ChartSkeleton />
+      <ChartSkeleton />
+      <ChartSkeleton />
+      <SkeletonBlock className="h-[421px] w-full" />
     </>
   )
 }
@@ -516,8 +569,9 @@ function SecondarySkeleton() {
 function PartySkeleton() {
   return (
     <>
-      <CriticalSkeleton />
-      <SkeletonBlock className="h-[228px] w-full" />
+      <HeroPanelSkeleton />
+      <RecentListSkeleton />
+      <ChartSkeleton />
     </>
   )
 }
